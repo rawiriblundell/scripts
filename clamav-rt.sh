@@ -48,7 +48,6 @@ xhost +local:
 # Notification function
 notify (){
 	ClamFault=$(grep FOUND "${LogFile}")
-	export ClamFault
 	Pid=$(pgrep -u ${User} pulseaudio) #Grep for a process that's likely to be there
 	Dbus=$(grep -z DBUS_SESSION_BUS_ADDRESS /proc/"$Pid"/environ | sed 's/DBUS_SESSION_BUS_ADDRESS=//')
 	export DBUS_SESSION_BUS_ADDRESS=$Dbus
