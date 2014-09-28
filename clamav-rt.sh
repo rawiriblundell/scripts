@@ -16,17 +16,33 @@
 
 # This provides some limited real-time scanning with clamav
 
-# Pre-flight checks
-if [ ! -f "$(which clamscan)" ]; then
-        printf "%s\n" "clamscan is required.  Please install it and try again."
-        exit 1
-elif [ ! -f "$(which incrond)" ]; then
-	printf "%s\n" "incron is required.  Please install it and try again."
-	exit 1
-elif [ ! -f "$(which notify-send)" ]; then
-        printf "%s\n" "notify-send is required.  Please install it and try again."
-        exit 1
-fi
+# First we need to tell the script who to alert to.  This could be built smarter
+User=rawiri
+
+# Next let's set the notify function
+notify (){
+        # Because this is invoked as root, we need to let this script know where to notify to
+        #export DISPLAY=:0 #Usually this works, if not, we have to use dbus
+
+        # Sometimes this needs to be set, usually on ubuntu and derivatives
+        xhost +local:
+
+        Pid=$(pgrep -u ${User} pulseaudio) #Grep for a process that's likely to be there
+        Dbus=$(grep -z DBUS_SESSION_BUS_ADDRESS /proc/"$Pid"/environ | sed 's/DBUS_SESSION_BUS_ADDRESS=//')
+        export DBUS_SESSION_BUS_ADDRESS=$Dbus
+        su ${User} -c "notify-send -u critical \"ClamAV-RT Alert! Please investigate:\" \"${ClamFault}\""
+}
+
+# Pre-flight checks.  Check dependencies
+Dependencies="clamscan incrond notify-send"
+for d in ${Dependencies}; do
+	if [[ ! "$(which "${d}")" > /dev/null ]]; then
+		ClamFault="${d} is required.  Please install it and try again."
+		notify #Notify the user which dependency is missing
+        	printf "%s\n" "$d is required.  Please install it and try again."
+        	exit 1
+        fi
+done
 
 # LogFile variable
 LogFile=/var/log/clamav/clam-rt$(echo "${1}" | tr '/' '_')
@@ -36,29 +52,12 @@ if [ -f "${LogFile}" ]; then
 	:> "${LogFile}"
 fi
 
-# User variable, determines who to alert to
-User=rawiri
-
-# Because this is invoked as root, we need to let this script know where to notify to
-#export DISPLAY=:0 #Usually this works, if not, we have to use dbus
-
-# Sometimes this needs to be set, usually on ubuntu and derivatives
-xhost +local:
-
-# Notification function
-notify (){
-	ClamFault=$(grep FOUND "${LogFile}")
-	Pid=$(pgrep -u ${User} pulseaudio) #Grep for a process that's likely to be there
-	Dbus=$(grep -z DBUS_SESSION_BUS_ADDRESS /proc/"$Pid"/environ | sed 's/DBUS_SESSION_BUS_ADDRESS=//')
-	export DBUS_SESSION_BUS_ADDRESS=$Dbus
-	su ${User} -c "notify-send -u critical \"ClamAV Alert! Please investigate:\" \"${ClamFault}\""
-}
-
 # Now we scan the file and process the exit code.
 clamscan -l "${LogFile}" -i "${1}"
 if [ "$?" = "0" ]; then
-	rm -f "${LogFile}" # We don't need these logfiles
-	exit 0 # Everything's ok
+	rm -f "${LogFile}" #We don't need these logfiles
+	exit 0 #Everything's ok
 else
-	notify # A virus was found, so notify the user
+	ClamFault=$(grep FOUND "${LogFile}") #Get the FOUND line from the logfile
+	notify #A virus was found, so notify the user
 fi
