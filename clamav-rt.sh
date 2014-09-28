@@ -6,11 +6,11 @@
 # Author: Rawiri Blundell, 09/2014
 
 # A script to be called by incrond.  Create the file /etc/incron.d/clamav with the contents:
-# [Directory to watch] IN_CREATE,IN_CLOSE_WRITE,IN_ATTRIB /path/to/clam-rt.sh $@/$#
+# [Directory to watch] IN_CLOSE_WRITE,IN_ATTRIB,IN_MODIFY,IN_MOVED_TO /path/to/clam-rt.sh $@/$#
 # e.g.
-# /home/rawiri/Downloads IN_CREATE,IN_CLOSE_WRITE,IN_ATTRIB /home/rawiri/scripts/clam-rt.sh $@/$#
+# /home/rawiri/Downloads IN_CLOSE_WRITE,IN_ATTRIB,IN_MODIFY,IN_MOVED_TO /home/rawiri/scripts/clam-rt.sh $@/$#
 
-# When a file is created, opened for writing and then closed (includes modifications), or has its attributes changed
+# When a file is created, modified or moved to the directory being watched
 # incrond feeds the directory ($@) and filename ($#) to this script, which then scans the file with clamav
 # Upon detection, a notification is sent to the user, otherwise 'no-news is good-news'
 
