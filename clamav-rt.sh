@@ -6,12 +6,12 @@
 # Author: Rawiri Blundell, 09/2014
 
 # A limited real-time AV script that's called by incrond.  Create the file /etc/incron.d/clamav with the contents:
-# [Directory to watch] IN_CLOSE_WRITE,IN_ATTRIB,IN_MODIFY,IN_MOVED_TO /path/to/clam-rt.sh $@/$#
+# [Directory to watch] IN_CLOSE_WRITE,IN_NO_LOOP /path/to/clam-rt.sh $@/$#
 # e.g.
-# /home/rawiri/Downloads IN_CLOSE_WRITE,IN_ATTRIB,IN_MODIFY,IN_MOVED_TO /home/rawiri/scripts/clam-rt.sh $@/$#
+# /home/rawiri/Downloads IN_CLOSE_WRITE,IN_NO_LOOP /home/rawiri/scripts/clam-rt.sh $@/$#
 
-# When a file is created in, modified in or moved to the directory being watched
-# incrond feeds the directory ($@) and filename ($#) to this script, which then scans the file with clamav
+# When a file is created in, the directory being watched,incrond feeds the directory ($@) 
+# and filename ($#) to this script, which then scans the file with clamav.
 # Upon detection, a notification is sent to the user, otherwise 'no-news is good-news'
 
 # First we need to tell the script who to alert to.  This could be built smarter
