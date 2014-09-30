@@ -10,7 +10,7 @@
 # e.g.
 # /home/rawiri/Downloads IN_CLOSE_WRITE,IN_NO_LOOP /home/rawiri/scripts/clam-rt.sh $@/$#
 
-# When a file is created in, the directory being watched,incrond feeds the directory ($@) 
+# When a file is created in the directory being watched,incrond feeds the directory ($@) 
 # and filename ($#) to this script, which then scans the file with clamav.
 # Upon detection, a notification is sent to the user, otherwise 'no-news is good-news'
 
