@@ -14,6 +14,13 @@
 # and filename ($#) to this script, which then scans the file with clamav.
 # Upon detection, a notification is sent to the user, otherwise 'no-news is good-news'
 
+# Zeroth, we exit for any files that we don't want to scan
+# Currently just Chrome downloads, but if this list grows this will need to be reworked
+if [[ "${1}" =~ ".com.google.Chrome" ]] || [[ "${1}" =~ ".crdownload" ]]; then
+        logger "${0}: Skipping ${1} as it is a partial file."
+        exit 0
+fi
+
 # First we need to tell the script who to alert to.  This could be built smarter
 User=rawiri
 
