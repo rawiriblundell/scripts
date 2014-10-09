@@ -16,7 +16,7 @@
 
 # Zeroth, we exit for any files that we don't want to scan
 # Currently just Chrome downloads, but if this list grows this will need to be reworked
-if [[ "${1}" =~ ".com.google.Chrome" -o "${1}" =~ ".crdownload" -o "${1}" =~ ".part" -o "${1}" =~ ".tmp" ]]; then
+if [[ "${1}" =~ .com.google.Chrome || "${1}" =~ .crdownload || "${1}" =~ .part || "${1}" =~ .tmp ]]; then
         logger "${0}: Skipping ${1} as it is a partial file."
         exit 0
 fi
