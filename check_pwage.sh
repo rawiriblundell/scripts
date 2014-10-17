@@ -36,13 +36,13 @@ Verbose="false"
 
 # FUNCTIONS
 # =========================================================================
-show() {
+Show() {
     printf "%s\n" "${Dashes} ${1} ${Dashes}" >> "${Log}"
     shift
     printf "%s\n" "$(eval "$@")" "" >> "${Log}"
 }
 
-usage () {
+Usage () {
 	printf "%s\n" " Usage: ${0##*/} -u User [-e [Email] -p [passwd file] -s [shadow file] -h -v]" "" \
 	" Options:" \
 	"	-u User to check against." \
@@ -53,7 +53,7 @@ usage () {
 	"	-v Verbose.  Enables extra output on stdout."
 }
 
-scriptargs() {
+ScriptArgs() {
 	echo Date: "$(date)"
 	echo System: "$(uname -a)"
 }
@@ -62,16 +62,24 @@ SendMail() {
 	mailx -s "${1}" "${Notify}" < "${Log}"
 }
 
-reminder () {
+Reminder () {
 	printf "%s\n" "Date: $(date)" "" "${User} needs to change their password within the next ${Expire} days."
 }
 
-expired () {
+Expired () {
 	printf "%s\n" "Date: $(date)" "" \
 	"The password for ${User} has expired" \
 	"${User} last changed their password on ${LastChange}" \
 	"The maximum age for the password is ${MaxAge} days" \
 	"and it has expired ${Expire} days ago."
+}
+
+Verbose () {
+	printf "%s\n" "Detail for ${User}'s password:" "Password expires in ${Expire} days." \
+	"${User} last changed their password on ${LastChange}." \
+	"${User}'s password is ${AgeToday} days old." \
+	"Maximum Password Age: ${MaxAge} days." \
+	"Warning Period: ${WarnTime} days."
 }
 
 # GETOPTS
@@ -80,13 +88,13 @@ while getopts "ehp:s:u:v" Flags; do
 	case "${Flags}" in
 		e)	Email="true";
 			EmailAddr="${OPTARG}";;
-		h)	usage
+		h)	Usage
 			exit 0;;
 		p)	Passwd="${OPTARG}";;
 		s)	Shadow="${OPTARG}";;	
 		u)	User="${OPTARG}";;
 		v)	Verbose="true";;
-		\?)	printf "%s\n" "ERROR: Invalid option: $OPTARG.  Try '${0##*/} -h' for usage." >&2
+		\?)	printf "%s\n" "ERROR: Invalid option: $OPTARG.  Try ./'${0##*/} -h' for usage." >&2
 			exit 1;;
 		:)	printf "%s\n" "Option '-$OPTARG' requires an argument, e.g. '-$OPTARG /some/path/to/etc/passwd'." >&2
 			exit 1;;
@@ -111,7 +119,7 @@ fi
 # This is perhaps the most important check, without this, the script breaks
 if [ "${User}" = ""  ]; then
 	printf "%s\n" "I require a username to work against.  The User argument is blank." \
-	"Please try '${0##*/} -u USERNAME', or use '${0##*/} -h' for usage."
+	"Please try './${0##*/} -u USERNAME', or use './${0##*/} -h' for usage."
 	cat "${Log}"
 		if [ "${Email}" = "true" ]; then
 			Notify=${Recipient}
@@ -147,7 +155,12 @@ LastChange="$(perl -e 'print scalar localtime('$Change' * 24 *3600);')"
 # If the password change field is blank, let's log that
 if [ "${Changed}" = "" ]; then
 	Changed=0
-	printf "%s\n" "${0##*/} - ${User} on ${Host} has no date for change of password" >> "${Log}"
+	printf "%s\n" "${0##*/}: ${User} on ${Host} has no date for change of password" >> "${Log}"
+fi
+
+# If the WarnTime is blank, let's set a default so as not to upset the calcs
+if [ "${WarnTime}" = "" ]; then
+	WarnTime=7
 fi
 
 # Compute the age of the user's password
@@ -164,14 +177,14 @@ if [ "${MaxAge}" -ge ${AgeToday} ]; then
 	((Expire = MaxAge - AgeToday))
 	# So if the password is inside the warning period, it's time to alert
 	if [ "${WarnTime}" -ge ${Expire} ]; then
-		show "R E M I N D E R" reminder
+		Show "R E M I N D E R" Reminder
 		if [ "${Email}" = "true" ]; then
-			SendMail "${User} Password Info On ${Host}"
+			SendMail "Password information for ${User} on ${Host}"
 		fi
 	fi
 # Otherwise, the password has expired.
 else
-	show "E X P I R E D" expired
+	Show "E X P I R E D" Expired
 	if [ "${Email}" = "true" ]; then
 		SendMail "WARNING: ${User} Password Expired On ${Host}"
 	fi
@@ -179,11 +192,14 @@ fi
 
 # If the Verbose flag is set, we print out some more info
 if [ "${Verbose}" = "true" ]; then
-	printf "%s\n" "Detail for ${User}'s password:" "Password expires in ${Expire} days." \
-	"${User} last changed their password on ${LastChange}." \
-	"${User}'s password is ${AgeToday} days old." \
-	"Maximum Password Age: ${MaxAge} days." \
-	"Warning Period: ${WarnTime} days."
+	# Obviously if email is wanted, we direct the Verbose output there
+	if [ "${Email}" = "true" ]; then
+		Verbose >> "${Log}"
+		SendMail "Password information for ${User} on ${Host}"
+	# Otherwise, the verbose output goes to stdout
+	else
+		Verbose
+	fi
 fi
 
 # Finally clean up and exit
