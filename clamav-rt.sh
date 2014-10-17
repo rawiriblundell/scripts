@@ -39,7 +39,7 @@ notify (){
 }
 
 # Pre-flight checks.  Check dependencies
-Dependencies="clamscan incrond notify-send"
+Dependencies="clamscan incrond notify-send logger"
 for d in ${Dependencies}; do
 	if [[ ! "$(which "${d}")" > /dev/null ]]; then
 		ClamFault="${d} is required.  Please install it and try again."
@@ -58,6 +58,7 @@ if [ -f "${LogFile}" ]; then
 fi
 
 # Now we scan the file and process the exit code.
+logger "${0}: Scanning ${1}..."
 clamscan -l "${LogFile}" -i "${1}"
 if [ "$?" = "0" ]; then
 	rm -f "${LogFile}" #We don't need these logfiles
