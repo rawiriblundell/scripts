@@ -20,7 +20,7 @@
 # Don't use '*' as a special character, it'll glob up the directory listing into your array
 InputChars=(\! \@ \# \$ \% \^ \& \( \) \_ \+ \? \> \< \~)
 
-# Generate a random character location by feeding RANDOM with the character count (#) of the array
+# Generate a random character location (i.e. array index) by feeding RANDOM with the character count (#) of the array
 Shuffle=$((RANDOM % ${#InputChars[@]}))
 
 # Generate the base password to work with
