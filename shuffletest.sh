@@ -7,7 +7,8 @@
 # This is because genpasswd at the time of writing simply loops through password generation
 # and prints out matching strings - seemingly inefficient
 
-# Testing showed neglible difference in performance.
+# Testing showed neglible difference in performance.  200 iterations of this piped into column took 12.98s,
+# the same out of genpasswd took 11.359s.  Similar results were repeatable.
 
 # This was written in this way in order to be portable-ish (Linux and Solaris tested)
 # More elegant methods are obviously out there, I was intentionally being as basic as possible
