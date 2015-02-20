@@ -19,6 +19,11 @@
 # 18/12/2014 - Minor adjustment to allow NRPE compatibility
 # 03/02/2015 - Added MaxAge defaulting code to cater for blank fields
 
+# TO DO
+# =========================================================================
+# Build in chage support.  At the moment this is portable-ish, 
+#   but if chage is available, it makes sense to use it.
+
 # VARIABLES
 # =========================================================================
 Log=/tmp/${0##*/}.$(date +%Y%m%d).log
