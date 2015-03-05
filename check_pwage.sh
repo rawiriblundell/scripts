@@ -18,6 +18,7 @@
 # 07/10/2014 - Heavier changes, improved readability, added getopts, enabled email switching and verbose mode
 # 18/12/2014 - Minor adjustment to allow NRPE compatibility
 # 03/02/2015 - Added MaxAge defaulting code to cater for blank fields
+# 05/03/2015 - Some portability fixes after testing on Solaris
 
 # TO DO
 # =========================================================================
@@ -157,7 +158,7 @@ WarnTime="$(grep -w "${User}" "${Shadow}" | cut -d: -f6)"
 DaysNow="$(perl -e 'print int(time/(60*60*24))')"
 ((Change = Changed + 1))
 DateChange="$(perl -e 'print scalar localtime('$Change' * 24 * 3600);')"
-LastChange="$(cut -d' ' -f1-3,5 <<< ${DateChange})"
+LastChange="$(printf "%s" "${DateChange}" | cut -d' ' -f1-4)"
 
 # If the password change field is blank, let's log that
 if [[ "${Changed}" = "" ]]; then
