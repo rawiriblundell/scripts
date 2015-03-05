@@ -138,7 +138,7 @@ if [ "${User}" = ""  ]; then
 fi
 
 # Now we check that the user exists in the passwd file
-if ! grep -q "${User}" "${Passwd}"; then
+if ! grep "${User}" "${Passwd}" &> /dev/null; then
         printf "%s\n" "${User} not found in ${Passwd}."
         if [ "${Email}" = "true" ]; then
                 SendMail "${User} not found in ${Passwd} error from command ${0##*/} on ${Host}"
