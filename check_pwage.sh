@@ -166,7 +166,7 @@ DateChange="$(perl -e 'print scalar localtime('$Change' * 24 * 3600);')"
 if command -v chage &>/dev/null; then
   LastChange="$(chage -l "${User}" | head -1 | cut -d ':' -f2 | cut -c 2-)"
 else
-  LastChange="$(printf "%s" "${DateChange}" | cut -d' ' -f1-4)"
+  LastChange="$(printf "%s" "${DateChange}" | cut -d' ' -f1-4,6)"
 fi
 
 # If the password change field is blank, let's log that
