@@ -5,7 +5,7 @@
 #          Further tweaking, locking down, config etc is on you.
 # Author:  Rawiri Blundell, 201508
 
-# TO-DO:   QA.  I'm sure the heredocs will require some escaping.
+# TO-DO:   QA testing, specifically triple checking the heredocs
 
 ################################################################################
 # License information
@@ -97,7 +97,7 @@ server {
                 root /var/www/html;
         }
 
-        location ~ \.php$ {
+        location ~ .php\$ {
                 try_files \$uri =404;
                 fastcgi_pass unix:/var/run/php5-fpm.sock;
                 fastcgi_index index.php;
@@ -112,7 +112,8 @@ cd /var/www/html
 wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css}
 
 # Create shellcheck.php
-cat << EOF > shellcheck.php
+# EOF quoted to force this heredoc to be literal
+cat << "EOF" > shellcheck.php
 <?php                                                                                   
 header('Content-type: application/json; charset=UTF-8');                                
 
@@ -134,12 +135,11 @@ if(is_resource($process)) {
   echo "[{ 'line': 1, 'column': 1, 'level': 'error', 'message': 'Oops, internal server error unrelated to your script! Sorry!'}]";                                                  
 }                                                                                       
 ?>
-
 EOF
 
 # Create shellcheckwrapper.sh
 mkdir -p /opt/shellcheck/bin
-cat << EOF > /opt/shellcheck/bin/shellcheckwrapper.sh
+cat << "EOF" > /opt/shellcheck/bin/shellcheckwrapper.sh
 #!/bin/dash
 export LC_CTYPE=en_US.utf8
 ulimit -v 50000
