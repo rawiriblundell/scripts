@@ -1,14 +1,37 @@
 #!/bin/bash
 
 # Purpose: To create a working local install of the Shellcheck webui
-# Note: This only performs a very basic setup of nginx and php
-#        Further tweaking, locking down, config etc is on you.
+# Note:    This only performs a very basic setup of nginx and php
+#          Further tweaking, locking down, config etc is on you.
+# Author:  Rawiri Blundell, 201508
+
+# TO-DO:   QA.  I'm sure the heredocs will require some escaping.
+
+################################################################################
+# License information
+# This script is released under the MIT license
+
+# Please see: https://github.com/koalaman/shellcheck/issues/423
+
+# Shellcheck's webui is made up of the following files:
+# down.png - unknown license
+# favicon.ico - unknown license
+# header.png - unknown licencse
+# index.html - copyright waived
+# jquery.js - dual MIT/GPL
+# prettify.js (https://github.com/google/code-prettify) - Apache 2.0
+# shellcheck.js - copyright waived
+# shellcheck.php - copyright waived
+# shellcheckwrapper.sh - copyright waived
+# spinner.gif - unknown license
+# sunburst.css (https://github.com/google/code-prettify) - Apache 2.0
+
+# down.png and spinner.gif appear to be ad-supported to create and then free to use (cssbuttongenerator.com)
+# I'm assuming the other images are copyright waived
+# If any of this is an issue, simply use your own images.  Easy!
+################################################################################
 
 # This was created and tested on Debian 8.1, RHEL/CentOS testing is TBD
-
-################################################################################
-# Please see: https://github.com/koalaman/shellcheck/issues/423
-################################################################################
 
 # Variables
 WrkPrcs=$(lscpu | grep "^CPU(s)" | awk '{print $2}')
@@ -85,12 +108,45 @@ server {
 EOF
 
 # Setup directory contents
-wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css} /var/www/html/
+cd /var/www/html
+wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css}
 
 # Create shellcheck.php
+cat << EOF > shellcheck.php
+<?php                                                                                   
+header('Content-type: application/json; charset=UTF-8');                                
+
+$fds = array(                                                                           
+    0 => array("pipe", "r"),                                                            
+    1 => array("pipe", "w"),                                                            
+);                                                                                      
+$cwd = '/tmp';                                                                          
+$env = array();                                                                         
+
+$process = proc_open("exec /opt/shellcheck/bin/shellcheckwrapper.sh", $fds, $pipes, $cwd, $env);                   
+if(is_resource($process)) {                                                             
+  fwrite($pipes[0], $_POST["script"]);                                                  
+  fclose($pipes[0]);                                                                    
+  echo stream_get_contents($pipes[1]);                                                  
+  fclose($pipes[1]);                                                                    
+  proc_close($process);                                                                 
+} else {                                                                                
+  echo "[{ 'line': 1, 'column': 1, 'level': 'error', 'message': 'Oops, internal server error unrelated to your script! Sorry!'}]";                                                  
+}                                                                                       
+?>
+
+EOF
 
 # Create shellcheckwrapper.sh
 mkdir -p /opt/shellcheck/bin
+cat << EOF > /opt/shellcheck/bin/shellcheckwrapper.sh
+#!/bin/dash
+export LC_CTYPE=en_US.utf8
+ulimit -v 50000
+ulimit -t 3
+exec shellcheck -f json -e 2148 -
+EOF
+chmod +x /opt/shellcheck/bin/shellcheckwrapper.sh
 
 # Restart services
 if command -v systemctl &>/dev/null; then
