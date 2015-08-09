@@ -111,6 +111,9 @@ EOF
 cd /var/www/html &>/dev/null || exit 1
 wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css}
 
+# Correct character encoding issue in shellcheck.js
+sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
+
 # Create shellcheck.php
 # EOF quoted to force this heredoc to be literal
 cat << "EOF" > shellcheck.php
@@ -136,6 +139,11 @@ if(is_resource($process)) {
 }                                                                                       
 ?>
 EOF
+
+# Ensure correct perms
+chmod 644 *
+
+# Return from whence we came
 cd - &>/dev/null || exit 1
 
 # Create shellcheckwrapper.sh
