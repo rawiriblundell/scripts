@@ -108,7 +108,7 @@ server {
 EOF
 
 # Setup directory contents
-cd /var/www/html
+cd /var/www/html &>/dev/null || exit 1
 wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css}
 
 # Create shellcheck.php
@@ -136,6 +136,7 @@ if(is_resource($process)) {
 }                                                                                       
 ?>
 EOF
+cd - &>/dev/null || exit 1
 
 # Create shellcheckwrapper.sh
 mkdir -p /opt/shellcheck/bin
