@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# Purpose: To create a working local install of the Shellcheck webui
+# Note: This only performs a very basic setup of nginx and php
+#        Further tweaking, locking down, config etc is on you.
+
+# This was created and tested on Debian 8.1, RHEL/CentOS testing is TBD
+
+################################################################################
+# Please see: https://github.com/koalaman/shellcheck/issues/423
+################################################################################
+
+# Variables
+WrkPrcs=$(lscpu | grep "^CPU(s)" | awk '{print $2}')
+HostName=$(hostname -f)
+
+# First we blindly install our dependencies
+printf "%s\n" "Installing dependencies, please wait..."
+if command -v apt-get &>/dev/null; then
+  apt-get -y install nginx php5 php5-fpm
+  # shellcheck in the apt repos is old, so we install a more recent version using cabal
+  # Update cabal's package list
+  cabal update
+  # Cursory self-update of the cabal utils
+  cabal install cabal-install
+  # Now install shellcheck
+  cabal install shellcheck
+  cp ~/.cabal/bin/shellcheck /usr/bin/
+  
+elif command -v yum &>/dev/null; then
+  # This is RHEL/CentOS-6 specific
+  # See: https://github.com/koalaman/shellcheck/issues/427
+  yum groupinstall "Development Tools" -y
+  # May need epel
+  yum install gmp-devel
+  ln -s /usr/lib64/libgmp.so.3  /usr/lib64/libgmp.so.10
+
+  # From https://www.haskell.org/platform/linux.html#linux-generic
+  wget https://haskell.org/platform/download/7.10.2/haskell-platform-7.10.2-a-unknown-linux-deb7.tar.gz
+  tar xvzf haskell-platform-7.10.2-a-unknown-linux-deb7.tar.gz
+  ./install-haskell-platform.sh
+  cabal install shellcheck
+  cp .cabal/bin/shellcheck /usr/local/bin # portable to other el6 systems without haskell
+
+fi
+
+# Setup php.  We disable cgi.fix_pathinfo for security reasons
+sed -i -e 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' /etc/php5/fpm/php.ini
+
+# Next we setup nginx, starting with the worker processes setting
+# This should match the number of CPU's (cores) available
+sed -i -e "s/^worker_processes.*/worker_processes $WrkPrcs;/" /etc/nginx/nginx.conf
+
+# Now we setup the default site
+# server_name uses the local FQDN, customise this if you like (e.g. shellcheck.mycompany.tld)
+# You may also like to customise the root path.  This really should be somewhere in /srv/www/ IMHO
+mv /etc/nginx/sites-available/default /etc/nginx/sites-available/default.bak
+
+cat << EOF > /etc/nginx/sites-available/default
+server {
+        listen       80;
+        server_name  ${HostName};
+        root /var/www/html;
+        index index.php index.html index.htm index.nginx-debian.html;
+
+        location / {
+                try_files \$uri \$uri/ =404;
+        }
+
+        error_page 404 /404.html;
+        error_page 500 502 503 504 /50x.html;
+
+        location = /50x.html {
+                root /var/www/html;
+        }
+
+        location ~ \.php$ {
+                try_files \$uri =404;
+                fastcgi_pass unix:/var/run/php5-fpm.sock;
+                fastcgi_index index.php;
+                fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+                include fastcgi_params;
+        }
+}
+EOF
+
+# Setup directory contents
+wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css} /var/www/html/
+
+# Create shellcheck.php
+
+# Create shellcheckwrapper.sh
+mkdir -p /opt/shellcheck/bin
+
+# Restart services
+if command -v systemctl &>/dev/null; then
+  systemctl restart nginx 
+  systemctl restart php5-fpm
+elif command -v service &>/dev/null; then
+  service nginx restart
+  service php5-fpm restart
+else
+  printf "%s\n" "ERROR: Unable to find 'systemctl' or 'service' in my path." \
+    "Please restart the nginx and php5-fpm services manually."
+  exit 1
+fi
+
+# Notify user
+printf "%s\n" "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
