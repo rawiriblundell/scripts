@@ -40,7 +40,7 @@ HostName=$(hostname -f)
 # First we blindly install our dependencies
 printf "%s\n" "Installing dependencies, please wait..."
 if command -v apt-get &>/dev/null; then
-  apt-get -y install nginx php5 php5-fpm
+  apt-get -y install nginx php5 php5-fpm cabal-install
   # shellcheck in the apt repos is old, so we install a more recent version using cabal
   # Update cabal's package list
   cabal update
