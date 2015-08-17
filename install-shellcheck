@@ -6,6 +6,7 @@
 # Author:  Rawiri Blundell, 201508
 
 # TO-DO:   QA testing, specifically triple checking the heredocs
+# TO-DO:   Rewrite index.html to point about.html to shellcheck.net/about.html
 
 ################################################################################
 # License information
