@@ -5,7 +5,6 @@
 #          Further tweaking, locking down, config etc is on you.
 # Author:  Rawiri Blundell, 201508
 
-# TO-DO:   QA testing, specifically triple checking the heredocs
 # TO-DO:   Rewrite index.html to point about.html to shellcheck.net/about.html
 
 ################################################################################
@@ -59,6 +58,7 @@ if command -v apt-get &>/dev/null; then
   
 elif command -v yum &>/dev/null; then
   # This is RHEL/CentOS-6 specific
+  # Note that the rest of this script is still Debian specific
   # See: https://github.com/koalaman/shellcheck/issues/427
   yum groupinstall "Development Tools" -y
   # May need epel
