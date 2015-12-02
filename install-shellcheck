@@ -116,7 +116,12 @@ EOF
 
 # Setup directory contents
 cd /var/www/html &>/dev/null || exit 1
-wget http://shellcheck.net/{down.png,favicon.ico,header.png,index.html,jquery.js,prettify.js,shellcheck.js,spinner.gif,sunburst.css}
+wget http://shellcheck.net/{down.png,favicon.ico,index.html,jquery.js,shellcheck.js,spinner.gif,sunburst.css}
+
+# Grab external items
+wget https://cdn.rawgit.com/google/code-prettify/master/loader/prettify.css
+wget https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js
+wget https://assets-cdn.github.com/images/modules/logos_page/GitHub-Logo.png
 
 # Correct character encoding issue in shellcheck.js
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
