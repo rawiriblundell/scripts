@@ -1,0 +1,135 @@
+#!/bin/bash
+#
+# rpm2pkg - creating Solaris pkg files from Linux rpm's
+# --bash rewrite of Mike Golvach's original perl script
+#
+# 2015 - Rawiri Blundell
+#
+# Creative Commons Attribution-Noncommercial-Share Alike 3.0 United States License
+#
+
+# Check we have the required binaries
+ErrCount=0
+for Prog in cpio pkgproto pkgmk pkgtrans rpm rpm2cpio; do
+  if ! command -v "${Prog}" &>/dev/null; then
+    printf "%s\n" "[ERROR]: rpm2pkg requires ${Prog}, please install it.  This may require the heirloom suite."
+    ErrCount=$(( ErrCount + 1 ))
+  fi
+done
+
+# If any packages are missing, then ErrCount's going 
+# to be greater than 0, in which case, exit.
+if [[ "${ErrCount}" -gt 0 ]]; then
+  exit 1
+fi
+
+# Get the location of our rpm
+InRPM=$1
+
+# Check that we actually have a parameter
+if [[ ! $# -eq 1 ]]; then
+  printf "%s\n" "[USAGE]: rpm2pkg /path/to/package.rpm"
+  exit 1
+fi
+
+# Check that we actually have an rpm
+if ! file "${InRPM}" | grep RPM &>/dev/null; then
+  printf "%s\n" "[ERROR]: This file does not appear to be an rpm..."
+  exit 1
+fi
+
+# This mktemp command tries GNU mktemp style first, then fails over to BSD style
+TmpDir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
+OrigDir="${PWD}"
+OrigRPM="${OrigDir}/${InRPM}"
+
+# Start a subshell, cd to the TmpDir
+(
+cd "${TmpDir}" || exit 1
+
+# Convert the rpm to cpio, then pipe that to cpio
+# cpio -d (make dirs) -i (extract) -m (keep perms)
+rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
+
+# Generate the prototype file
+printf "%s\n" "i pkginfo" \
+  "!default 0640 root root" \
+  "$(find . -print | pkgproto | grep -v prototype)" >> "${TmpDir}"/prototype
+
+# Leave the subshell
+)
+
+# The original perl script tried to use 'strings [rpm package]' to dump
+# information into an array which it then parsed.  Trying this against various rpm's
+# showed me that this was probably not a reliable approach.
+# We can use 'rpm' to pull the required information straight from the package file.
+rpmName=$(rpm -qp --queryformat '%{NAME}\n' "${OrigRPM}")
+rpmVer=$(rpm -qp --queryformat '%{VERSION}\n' "${OrigRPM}")
+rpmArch=$(rpm -qp --queryformat '%{ARCH}\n' "${OrigRPM}")
+rpmVendor=$(rpm -qp --queryformat '%{VENDOR}\n' "${OrigRPM}")
+rpmPkger=$(rpm -qp --queryformat '%{PACKAGER}\n' "${OrigRPM}")
+rpmDesc=$(rpm -qp --queryformat '%{DESCRIPTION}\n' "${OrigRPM}")
+rpmBuildHost="$(rpm -qp --queryformat '%{BUILDHOST}\n' "${OrigRPM}")-$(date +%Y%m%d%H%M)"
+
+# If arch is "noarch", then change it to "all"
+if [[ "${rpmArch}" = noarch ]]; then
+  rpmArch=all
+fi
+
+# If rpmName is more than 32 chars, we prompt the user to shorten it
+# If we exceed our limit, we need to ask the user to provide a name
+# Note: In older versions of Solaris, this was a 9 char limit.
+if [[ "${#rpmName}" -gt 32 ]]; then
+  # Pass rpmName to our target variable, rpmPkgName
+  rpmPkgName="${rpmName}"
+  # Use a while loop to force it to 32 or less chars
+  while [[ "${#rpmPkgName}" -gt 32 ]]; do
+    printf "%s\n" "[INFO]: Solaris PKG attribute must be less than 32 chars, but RPM name attribute is ${#rpmPkgName} chars long"
+    read -rep $'Please enter a suitable abbreviated PKG name e.g. RPMCmypkg: ' rpmPkgName
+    printf "%s\n" ""
+  done
+# Otherwise, just set it to RPMCrpmName (RPMC = RPM Converted)
+else
+  rpmPkgName="RPMC${rpmName}"
+fi
+
+# Are there scripts?
+#rpm -qp scripts "${InRPM}"
+
+#rpmPreInst=$(rpm -qp --queryformat '%{PREIN}\n')
+
+# Create the pkginfo file.  Required fields: PKG, NAME, ARCH, VERSION, and CATEGORY
+printf "%s\n" \
+"PKG=${rpmPkgName}" \
+"NAME=${rpmName}" \
+"VERSION=${rpmVer}" \
+"VENDOR=${rpmVendor}" \
+"ARCH=${rpmArch}" \
+"EMAIL=${rpmPkger}" \
+"CATEGORY=application" \
+"BASEDIR=/" \
+"DESC=${rpmDesc}" \
+"PSTAMP=${rpmBuildHost}" \
+"CLASSES=none" >> "${TmpDir}"/pkginfo
+
+# Print a non-alcoholic bar
+printf "%s\n" "================================================================================"
+
+# Generate the package source
+pkgmk -o -f "${TmpDir}/prototype" -b "${TmpDir}" -d /tmp || exit 1
+
+# Print a non-alcoholic bar
+printf "%s\n" "================================================================================"
+
+# Validate it
+pkgchk -d /tmp "${rpmPkgName}" || exit 1
+
+# Print a non-alcoholic bar
+printf "%s\n" "================================================================================"
+
+# Build the pkg file
+pkgtrans -o /tmp "${PWD}/${rpmName}.${rpmVer}.pkg" "${rpmPkgName}"
+
+# TODO: trap this
+# Remove the tempdir
+rm -rf "${TmpDir}"
