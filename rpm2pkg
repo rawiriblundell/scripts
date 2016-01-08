@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rpm2pkg - creating Solaris pkg files from Linux rpm's
+# rpm2pkg - creating Solaris SVR4 pkg files from Linux rpm's
 # --bash rewrite of Mike Golvach's original perl script
 #
 # 2015 - Rawiri Blundell
@@ -10,7 +10,7 @@
 
 # Check we have the required binaries
 ErrCount=0
-for Prog in cpio pkgproto pkgmk pkgtrans rpm rpm2cpio; do
+for Prog in cpio pkgchk pkgproto pkgmk pkgtrans rpm rpm2cpio; do
   if ! command -v "${Prog}" &>/dev/null; then
     printf "%s\n" "[ERROR]: rpm2pkg requires ${Prog}, please install it.  This may require the heirloom suite."
     ErrCount=$(( ErrCount + 1 ))
@@ -43,22 +43,6 @@ TmpDir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 OrigDir="${PWD}"
 OrigRPM="${OrigDir}/${InRPM}"
 
-# Start a subshell, cd to the TmpDir
-(
-cd "${TmpDir}" || exit 1
-
-# Convert the rpm to cpio, then pipe that to cpio
-# cpio -d (make dirs) -i (extract) -m (keep perms)
-rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
-
-# Generate the prototype file
-printf "%s\n" "i pkginfo" \
-  "!default 0640 root root" \
-  "$(find . -print | pkgproto | grep -v prototype)" >> "${TmpDir}"/prototype
-
-# Leave the subshell
-)
-
 # The original perl script tried to use 'strings [rpm package]' to dump
 # information into an array which it then parsed.  Trying this against various rpm's
 # showed me that this was probably not a reliable approach.
@@ -70,6 +54,10 @@ rpmVendor=$(rpm -qp --queryformat '%{VENDOR}\n' "${OrigRPM}")
 rpmPkger=$(rpm -qp --queryformat '%{PACKAGER}\n' "${OrigRPM}")
 rpmDesc=$(rpm -qp --queryformat '%{DESCRIPTION}\n' "${OrigRPM}")
 rpmBuildHost="$(rpm -qp --queryformat '%{BUILDHOST}\n' "${OrigRPM}")-$(date +%Y%m%d%H%M)"
+
+# These often default to root, but just in case
+rpmFileOwner=$(rpm -qp --queryformat '%{FILEUSERNAME}\n' "${OrigRPM}" 2>/dev/null)
+rpmFileGroup=$(rpm -qp --queryformat '%{FILEGROUPNAME}\n' "${OrigRPM}" 2>/dev/null)
 
 # If arch is "noarch", then change it to "all"
 if [[ "${rpmArch}" = noarch ]]; then
@@ -93,10 +81,54 @@ else
   rpmPkgName="RPMC${rpmName}"
 fi
 
-# Are there scripts?
-#rpm -qp scripts "${InRPM}"
+# Check for a preinstall script
+if ! rpm -qp --queryformat '%{PREIN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
+  rpm -qp --queryformat '%{PREIN}\n' "${OrigRPM}" > "${TmpDir}"/preinstall
+fi
 
-#rpmPreInst=$(rpm -qp --queryformat '%{PREIN}\n')
+# Check for a postinstall script
+if ! rpm -qp --queryformat '%{POSTIN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
+  rpm -qp --queryformat '%{POSTIN}\n' "${OrigRPM}" > "${TmpDir}"/postinstall
+fi
+
+# Check for a pre-uninstall script
+if ! rpm -qp --queryformat '%{PREUN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
+  rpm -qp --queryformat '%{PREUN}\n' "${OrigRPM}" > "${TmpDir}"/preremove
+fi
+
+# Check for a post-uninstall script
+if ! rpm -qp --queryformat '%{POSTUN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
+  rpm -qp --queryformat '%{POSTUN}\n' "${OrigRPM}" > "${TmpDir}"/postremove
+fi
+
+# Start a subshell, cd to the TmpDir
+(
+cd "${TmpDir}" || exit 1
+
+# Convert the rpm to cpio, then pipe that to cpio
+# cpio -d (make dirs) -i (extract) -m (keep perms)
+rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
+
+# Generate the prototype file
+{
+  printf "%s\n" "i pkginfo"
+
+  if [[ -f "${TmpDir}"/preinstall ]]; then
+    printf "%s\n" "i preinstall"
+  elif [[ -f "${TmpDir}"/postinstall ]]; then
+    printf "%s\n" "i postinstall"
+  elif [[ -f "${TmpDir}"/preremove ]]; then
+    printf "%s\n" "i preremove"
+  elif [[ -f "${TmpDir}"/postremove ]]; then
+    printf "%s\n" "i postremove"
+  fi
+  
+  printf "%s\n" "!default 0640 ${rpmFileOwner} ${rpmFileGroup}" \
+  "$(find . -print | pkgproto | grep -v prototype)" 
+} > "${TmpDir}"/prototype
+
+# Leave the subshell
+)
 
 # Create the pkginfo file.  Required fields: PKG, NAME, ARCH, VERSION, and CATEGORY
 printf "%s\n" \
@@ -111,6 +143,11 @@ printf "%s\n" \
 "DESC=${rpmDesc}" \
 "PSTAMP=${rpmBuildHost}" \
 "CLASSES=none" >> "${TmpDir}"/pkginfo
+
+# At this stage, pause and offer the user the opportunity to fine tune the source before it's packaged
+printf "%s\n" "[INFO]: If you want to make any manual customisations to the code " \
+  "before it's packaged please do so now in ${TmpDir}.  Otherwise, just hit Enter..."
+read -rp "Press Enter to continue..."
 
 # Print a non-alcoholic bar
 printf "%s\n" "================================================================================"
