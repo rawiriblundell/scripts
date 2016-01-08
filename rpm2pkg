@@ -124,7 +124,7 @@ rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
   fi
   
   printf "%s\n" "!default 0640 ${rpmFileOwner} ${rpmFileGroup}" \
-  "$(find . -print | pkgproto | grep -v prototype)" 
+  "$(find . -print | pkgproto | egrep -v 'none prototype|none preinstall|none postinstall|none preremove|none postremove')"  
 } > "${TmpDir}"/prototype
 
 # Leave the subshell
