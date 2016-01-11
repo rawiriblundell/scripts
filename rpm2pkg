@@ -17,7 +17,7 @@ for Prog in cpio pkgchk pkgproto pkgmk pkgtrans rpm rpm2cpio; do
   fi
 done
 
-# If any packages are missing, then ErrCount's going 
+# If any packages are missing, then ErrCount's going
 # to be greater than 0, in which case, exit.
 if [[ "${ErrCount}" -gt 0 ]]; then
   exit 1
@@ -25,38 +25,43 @@ fi
 
 # Function for help output
 Fn_Usage() {
-printf "%s\n" "[Usage]: rpm2pkg -[abhpru] filename.rpm" \
+printf "%s\n" "rpm2pkg - a tool to convert rpm's to SVR4 Solaris pkg format"\
+  "" \
+  "[Usage]: rpm2pkg -[abhipru] filename.rpm" \
   "  -a, 'after-install' i.e. path to postinstall script" \
   "  -b, 'before-install' i.e. path to preinstall script" \
   "  -h, help" \
+  "  -i, interrupt.  This gives a pause before final packaging to allow manual changes" \
   "  -p, manually define PKG attr.  Default is RPMC<name of rpm package>" \
   "  -r, 'remove-install' i.e. path to post-uninstall script" \
   "  -u, 'uninstall' i.e. path to pre-uninstall script" \
   "" \
   "By default, 'rpm2pkg' will search for package scripts in the input rpm " \
-  "and simply copy them over.  There is no guarantee that these scripts will work" \ 
+  "and simply copy them over.  There is no guarantee that these scripts will work" \
   "on the Solaris target system, so you may want to provide your own.  Alternatively," \
   "you may want to add-in your own package scripts.  These options enable that." \
   "" \
   "When defining the PKG attribute, it's common to use 3-4 uppercase characters" \
   "usually an abbreviated company or repo name e.g. SUNWsomepkg.  'rpm2pkg' will" \
-  "default to 'RPMC<name gathered from the rpm>', where RPMC = RPM Converted."
+  "default to 'RPMC<name gathered from the rpm>', where RPMC = RPM Converted." \
+  ""
 }
 
 # GETOPTS
 ###############################################################################
-while getopts ":a:b:hp:r:u" Flags; do
+while getopts ":a:b:hip:r:u" Flags; do
   case "${Flags}" in
     a)  PostInst="${OPTARG}";;
     b)  PreInst="${OPTARG}";;
     h)  Fn_Usage
         exit 0;;
+    i)  PauseBuild=true;;
     p)  rpmPkgName="${OPTARG}";;
-    r)  PostUninst="${OPTARG}";;  
+    r)  PostUninst="${OPTARG}";;
     u)  PreUninst="${OPTARG}";;
     \?)  printf "%s\n" "[ERROR]: Invalid option: $OPTARG.  Try '${0##*/} -h' for usage." >&2
          exit 1;;
-    :)  printf "%s\n" "[ERROR]: Option '-${OPTARG}' requires an argument." >&2 
+    :)  printf "%s\n" "[ERROR]: Option '-${OPTARG}' requires an argument." >&2
         exit 1;;
   esac
   # Shift optind, allowing us to get the rpm filename without needing getopts
@@ -65,7 +70,7 @@ done
 
 ###############################################################################
 # Get the location of our rpm
-InRPM=$1
+OrigRPM=$1
 
 # Check that we actually have a parameter
 if [[ ! $# -eq 1 ]]; then
@@ -74,16 +79,17 @@ if [[ ! $# -eq 1 ]]; then
 fi
 
 # Check that we actually have an rpm
-if ! file "${InRPM}" | grep RPM &>/dev/null; then
-  printf "%s\n" "[ERROR]: '${InRPM}' does not appear to be an rpm..."
+if ! file "${OrigRPM}" | grep RPM &>/dev/null; then
+  printf "%s\n" "[ERROR]: '${OrigRPM}' does not appear to be an rpm..."
   exit 1
 fi
 
 ###############################################################################
 # This mktemp command tries GNU mktemp style first, then fails over to BSD style
 TmpDir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
-OrigDir="${PWD}"
-OrigRPM="${OrigDir}/${InRPM}"
+
+# Remove the TmpDir whichever way we exit
+trap 'rm -f "${TmpDir}"' 0 1 2 3 15
 
 ###############################################################################
 
@@ -103,28 +109,23 @@ rpmBuildHost="$(rpm -qp --queryformat '%{BUILDHOST}\n' "${OrigRPM}")-$(date +%Y%
 rpmFileOwner=$(rpm -qp --queryformat '%{FILEUSERNAME}\n' "${OrigRPM}" 2>/dev/null)
 rpmFileGroup=$(rpm -qp --queryformat '%{FILEGROUPNAME}\n' "${OrigRPM}" 2>/dev/null)
 
-#TODO: build in better smarts here... 
+#TODO: build in better smarts here...
 # If arch is "noarch", then change it to "all"
 if [[ "${rpmArch}" = noarch ]]; then
   rpmArch=all
 fi
 
-#TODO: Tie in -p here
-# If rpmName is more than 32 chars, we prompt the user to shorten it
-# If we exceed our limit, we need to ask the user to provide a name
-# Note: In older versions of Solaris, this was a 9 or 10 char limit depending on who you asked.
-if [[ "${#rpmName}" -gt 32 ]]; then
-  # Pass rpmName to our target variable, rpmPkgName
-  rpmPkgName="${rpmName}"
-  # Use a while loop to force it to 32 or less chars
+if [[ -z "${rpmPkgName}" ]]; then
+  # Auto convert to RPMCrpmName (RPMC = RPM Converted)
+  rpmPkgName="RPMC${rpmName}"
+  # If rpmPkgName is more than 32 chars, we prompt the user to shorten it
+  # If we exceed our limit, we need to ask the user to provide a name
+  # Note: In older versions of Solaris, this was a 9 or 10 char limit depending on who you asked.
   while [[ "${#rpmPkgName}" -gt 32 ]]; do
     printf "%s\n" "[INFO]: Solaris PKG attribute must be less than 32 chars, but RPM name attribute is ${#rpmPkgName} chars long"
     read -rep $'Please enter a suitable abbreviated PKG name e.g. RPMCmypkg: ' rpmPkgName
     printf "%s\n" ""
   done
-# Otherwise, just set it to RPMCrpmName (RPMC = RPM Converted)
-else
-  rpmPkgName="RPMC${rpmName}"
 fi
 
 # Figure out the package scripts
@@ -134,6 +135,7 @@ if [[ -n "${PreInst}" ]]; then
   #  Validate that it's a file we can get to.  If so, copy it
   if [[ -f "${PreInst}" ]]; then
     cp "${PreInst}" "${TmpDir}"/preinstall
+    printf "%s\n" "[INFO]: Copied preinstall script from ${PreInst} to '${TmpDir}/preinstall'"
   # Otherwise, error out.
   else
     printf "%s\n" "[ERROR]: '${PreInst}' does not appear to exist"
@@ -141,26 +143,28 @@ if [[ -n "${PreInst}" ]]; then
   fi
 # If the preinstall variable isn't in use, check the rpm for a preinstall script
 # If it's found, copy it over.  Notify the user of this as well.
-else 
+else
   if ! rpm -qp --queryformat '%{PREIN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{PREIN}\n' "${OrigRPM}" > "${TmpDir}"/preinstall
     printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/preinstall'"
   fi
 fi
-  
+
 # ...the same logic as above except for the respective scripts:
 
 # Post-install
 if [[ -n "${PostInst}" ]]; then
   if [[ -f "${PostInst}" ]]; then
     cp "${PostInst}" "${TmpDir}"/postinstall
+    printf "%s\n" "[INFO]: Copied preinstall script from '${PostInst}' to '${TmpDir}/postinstall'"
   else
     printf "%s\n" "[ERROR]: '${PostInst}' does not appear to exist"
     exit 1
   fi
-else 
+else
   if ! rpm -qp --queryformat '%{POSTIN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{POSTIN}\n' "${OrigRPM}" > "${TmpDir}"/postinstall
+    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/postinstall'"
   fi
 fi
 
@@ -168,13 +172,15 @@ fi
 if [[ -n "${PreUninst}" ]]; then
   if [[ -f "${PreUninst}" ]]; then
     cp "${PreUninst}" "${TmpDir}"/preremove
+    printf "%s\n" "[INFO]: Copied preinstall script from '${PreUninst}' to '${TmpDir}/preremove'"
   else
     printf "%s\n" "[ERROR]: '${PreUninst}' does not appear to exist"
     exit 1
   fi
-else 
+else
   if ! rpm -qp --queryformat '%{PREUN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{PREUN}\n' "${OrigRPM}" > "${TmpDir}"/preremove
+    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/preremove'"
   fi
 fi
 
@@ -182,13 +188,15 @@ fi
 if [[ -n "${PostUninst}" ]]; then
   if [[ -f "${PostUninst}" ]]; then
     cp "${PreInst}" "${TmpDir}"/postremove
+    printf "%s\n" "[INFO]: Copied preinstall script from '${PostUninst}' to '${TmpDir}/postremove'"
   else
     printf "%s\n" "[ERROR]: '${PostUninst}' does not appear to exist"
     exit 1
   fi
-else 
+else
   if ! rpm -qp --queryformat '%{POSTUN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{POSTUN}\n' "${OrigRPM}" > "${TmpDir}"/postremove
+    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/postremove'"
   fi
 fi
 ###############################################################################
@@ -214,9 +222,9 @@ rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
   elif [[ -f "${TmpDir}"/postremove ]]; then
     printf "%s\n" "i postremove"
   fi
-  
+
   printf "%s\n" "!default 0640 ${rpmFileOwner} ${rpmFileGroup}" \
-  "$(find . -print | pkgproto | egrep -v 'none prototype|none preinstall|none postinstall|none preremove|none postremove')" 
+  "$(find . -print | pkgproto | egrep -v 'none prototype|none preinstall|none postinstall|none preremove|none postremove')"
 } > "${TmpDir}"/prototype
 
 # Leave the subshell
@@ -236,10 +244,12 @@ printf "%s\n" \
 "PSTAMP=${rpmBuildHost}" \
 "CLASSES=none" >> "${TmpDir}"/pkginfo
 
-# At this stage, pause and offer the user the opportunity to fine tune the source before it's packaged
-printf "%s\n" "[INFO]: If you want to make any manual customisations to the code " \
-  "before it's packaged please do so now in ${TmpDir}.  Otherwise, just hit Enter..."
-read -rp "Press Enter to continue..."
+# If a pause is requested, let's do so now.
+if [[ "${PauseBuild}" = true ]]; then
+  printf "%s\n" "[INFO]: If you want to make any manual customisations to the code " \
+    "before it's packaged please do so now in ${TmpDir}.  When you are done, hit Enter..."
+  read -rp "Press Enter to continue..."
+fi
 
 # Print a non-alcoholic bar
 printf "%s\n" "================================================================================"
@@ -259,6 +269,6 @@ printf "%s\n" "=================================================================
 # Build the pkg file
 pkgtrans -o /tmp "${PWD}/${rpmName}.${rpmVer}.pkg" "${rpmPkgName}"
 
-# TODO: trap this
-# Remove the tempdir
-rm -rf "${TmpDir}"
+# And that's it
+printf "%s\n" "================================================================================" \
+  "[INFO]: rpm2pkg has completed converting '${OrigRPM}' to '${PWD}/${rpmName}.${rpmVer}.pkg'"
