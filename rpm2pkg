@@ -89,7 +89,7 @@ fi
 TmpDir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
 # Remove the TmpDir whichever way we exit
-trap 'rm -f "${TmpDir}"' 0 1 2 3 15
+trap 'rm -rf "${TmpDir}"' 0 1 2 3 15
 
 ###############################################################################
 
@@ -271,4 +271,6 @@ pkgtrans -o /tmp "${PWD}/${rpmName}.${rpmVer}.pkg" "${rpmPkgName}"
 
 # And that's it
 printf "%s\n" "================================================================================" \
-  "[INFO]: rpm2pkg has completed converting '${OrigRPM}' to '${PWD}/${rpmName}.${rpmVer}.pkg'"
+  "" \
+  "[INFO]: rpm2pkg has completed converting '${OrigRPM}' to '${PWD}/${rpmName}.${rpmVer}.pkg'" \
+  ""
