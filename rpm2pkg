@@ -231,8 +231,15 @@ rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
     printf "%s\n" "i postremove"
   fi
 
-  printf "%s\n" "!default 0640 ${rpmFileOwner} ${rpmFileGroup}" \
-  "$(find . -print | pkgproto | egrep -v 'none prototype|none preinstall|none postinstall|none preremove|none postremove')"
+  # Add the default ownership for all files.  This seems to be ignored, but just in case...
+  printf "%s\n" "!default 0640 ${rpmFileOwner} ${rpmFileGroup}"
+  # Now generate a list using 'pkgproto' to format it.  Because this has been finnicky
+  # we use 'awk' to set ownership in the prototype file.  This is one reason for the -i option:
+  # to allow fine tuning of file permissions/mapping in the prototype file.
+  find . -print | pkgproto \
+  | egrep -v 'none prototype|none preinstall|none postinstall|none preremove|none postremove' \
+  | awk '{$5=ENVIRON["rpmFileOwner"];$6=ENVIRON["rpmFileGroup"]; print}'
+
 } > "${TmpDir}"/prototype
 
 # Leave the subshell
