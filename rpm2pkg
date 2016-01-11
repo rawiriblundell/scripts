@@ -109,12 +109,20 @@ rpmBuildHost="$(rpm -qp --queryformat '%{BUILDHOST}\n' "${OrigRPM}")-$(date +%Y%
 rpmFileOwner=$(rpm -qp --queryformat '%{FILEUSERNAME}\n' "${OrigRPM}" 2>/dev/null)
 rpmFileGroup=$(rpm -qp --queryformat '%{FILEGROUPNAME}\n' "${OrigRPM}" 2>/dev/null)
 
-#TODO: build in better smarts here...
-# If arch is "noarch", then change it to "all"
+# Try to figure out the source architecture
 if [[ "${rpmArch}" = noarch ]]; then
+  rpmArch=all
+elif [[ "${rpmArch}" = i386 ]]; then
+  rpmArch=i386
+elif [[ "${rpmArch}" = x86_64 ]]; then
+  rpmArch=all
+else
+  printf "%s\n" "[WARN]: The target architecture could not be gathered from the rpm." \
+    "Setting to 'all' and hoping for the best..."
   rpmArch=all
 fi
 
+# Next, handle the PKG attribute
 if [[ -z "${rpmPkgName}" ]]; then
   # Auto convert to RPMCrpmName (RPMC = RPM Converted)
   rpmPkgName="RPMC${rpmName}"
