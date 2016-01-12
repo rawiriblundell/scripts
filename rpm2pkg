@@ -84,6 +84,10 @@ if ! file "${OrigRPM}" | grep RPM &>/dev/null; then
   exit 1
 fi
 
+# Cater for rpm pathing.  This allows relative and absolute pathing 
+# by translating OrigRPM into a full pathname
+OrigRPM="$(cd "$(dirname "${OrigRPM}")" && pwd)/$(basename "${OrigRPM}")"
+
 ###############################################################################
 # This mktemp command tries GNU mktemp style first, then fails over to BSD style
 TmpDir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
