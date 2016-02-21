@@ -16,7 +16,7 @@ while getopts "c:dh:m:M:" Flags; do
     c)  case "${OPTARG}" in
           (*[!0-9]*|'') printf "%s\n" "[ERROR]: (-c) '${OPTARG}' is not a number"; exit 1;;
           (*)           count="${OPTARG}";;
-        esac
+        esac;;
     d)  debug="true";;
     h)  printf "%s\n" "rand - generate random integers" \
         "Optional Arguments:" \
@@ -29,11 +29,11 @@ while getopts "c:dh:m:M:" Flags; do
     m)  case "${OPTARG}" in
           (*[!0-9]*|'') printf "%s\n" "[ERROR]: (-m) '${OPTARG}' is not a number"; exit 1;;
           (*)           nMin="${OPTARG}";;
-        esac
+        esac;;
     M)  case "${OPTARG}" in
           (*[!0-9]*|'') printf "%s\n" "[ERROR]: (-M) '${OPTARG}' is not a number"; exit 1;;
           (*)           nMax="${OPTARG}";;
-        esac
+        esac;;
     \?)  echo "ERROR: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
          return 1;;
     :)  echo "Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'" >&2
