@@ -1,0 +1,257 @@
+#!/bin/sh
+# Purpose:    This script attempts to generate random integers through any means necessary
+# Author:     Rawiri Blundell
+# Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
+# Date:       15022016
+
+###############################################################################
+# Based on 'rand' by Heiner Steven <heiner.steven@odn.de>
+PosixRand() {
+PN=`basename "$0"`			# program name
+
+RandomDevice=/dev/urandom
+#MaxRand=4294967295			# 2^32 = 4 GB
+# Some shell commands (e.g. Linux "expr") have problems with integer values
+# greater than 2^31
+MaxRand=32767
+
+Msg () {
+    for i
+    do echo "$PN: $i" >&2
+    done
+}
+
+Fatal () { Msg "$@"; exit 1; }
+
+joinlines () {
+    # "bc" splits very long output lines using the following format:
+    #	"a\
+    #   b"
+
+    tr -d '\134\012'	# remove backslash and trailing line-feed character
+    echo		# terminate line using line-feed
+}
+
+if [ $# -gt 1 ]
+then Usage
+elif [ $# -eq 1 ]
+then
+    case "$1" in
+    	*[!0-9]*)   Fatal "illegal number: $1";;
+	*)	    Max=$1;;
+    esac
+fi
+: ${Max:=$MaxRand}			# Use default value 
+
+# Try different ways of getting a random number
+
+if [ -c $RandomDevice ]
+then
+    # Read 4 bytes from the random device (dd), and interpret them as a
+    # 32 bit long unsigned integer (od -t u4).
+    #n=`dd if=/dev/urandom bs=1 count=4 2>/dev/null |
+    #	    od -t u4 | awk 'NR==1 {print $2}'`
+
+    # Uncomment the following to use 64 bit random numbers
+    #n=`dd if=/dev/urandom bs=1 count=8 2>/dev/null |
+    #	    od -t u8 | awk 'NR==1 {print $2}'`
+
+    # Uncomment the lines below to get a random number with $ndigit
+    # digits.  Calculate the number of bytes needed as follows:
+    # bytes= ... # round log256(10^$ndigit)
+    #     -> log256(10^x) = x * log256(10) = x * ln(10)/ln(256)
+    #        = x * .41524101186092029348
+    # Example: 
+    #	How many bytes are needed to represent 10 decimal digits:
+    #	10 * .41524101186092029348 = 4.1524101186092029348
+    #	-> 5 bytes needed to represent all 10 digit decimal values
+    #      from 0..9999999999
+    #ndigit=10	# 0..9999999999
+    #bytes=5
+    ndigit=`expr "$Max" : '.*'`		# string length
+    # The following calculation may return a result that is one to large
+    # because we do not attempt to properly round the value to the next
+    # largest integer value.
+    bytes=`echo "$ndigit * l(10)/l(256) + 1" | bc -l | cut -d. -f1`
+    hexdigits=`echo "$bytes * 2" | bc`
+    #echo >&2 "DEBUG: ndigit=<$ndigit> bytes=<$bytes> hexdigits=<$hexdigits>"
+
+    n=`(echo ibase=16; dd if=/dev/urandom bs=1 count=$bytes 2>/dev/null |
+    	    od -tx1 |			# write as hex byte stream
+	    sed -n '$q;p' |		# remove last line
+	    cut -d ' ' -f2- |		# remove offsets
+	    tr -d ' ' | joinlines |
+	    cut -c1-$hexdigit |
+	    tr '[a-f]' '[A-F]') |	# "bc" needs upper case hex chars
+	    bc | joinlines`
+
+elif [ -n "$RANDOM" ]
+then
+    # This shell has a built-in random function (ksh, bash, zsh), which
+    # probably generates better distributed values than our "date"
+    # approach.
+    n=$RANDOM
+else
+    set -- `date '+%H %M %S'`
+    [ $# -ne 3 ] && Fatal "could not invoke program date"
+
+    n=`echo "$$ * $1 * $2 * $3 + $3" | bc`
+fi
+
+# Some "expr" commands have problems with large integer values
+echo "$n % $Max + 1" | bc | joinlines
+}
+
+###############################################################################
+# Based on 'rand' by Malte Skoruppa, see:
+# http://unix.stackexchange.com/questions/157250/how-to-efficiently-generate-large-uniformly-distributed-random-integers-in-bas
+
+BashRand() {
+
+# computes the ceiling of log2
+# i.e., for parameter x returns the lowest integer l such that 2**l >= x
+log2() {
+  local x=$1 n=1 l=0
+  while (( x>n && n>0 ))
+  do
+    let n*=2 l++
+  done
+  echo $l
+}
+
+# uses $RANDOM to generate an n-bit random bitstring uniformly at random
+#  (if we assume $RANDOM is uniformly distributed)
+# takes the length n of the bitstring as parameter, n can be up to 60 bits
+get_n_rand_bits() {
+  local n=$1 rnd=$RANDOM rnd_bitlen=15
+  while (( rnd_bitlen < n ))
+  do
+    rnd=$(( rnd<<15|$RANDOM ))
+    let rnd_bitlen+=15
+  done
+  echo $(( rnd>>(rnd_bitlen-n) ))
+}
+
+# alternative implementation of get_n_rand_bits:
+# uses /dev/urandom to generate an n-bit random bitstring uniformly at random
+#  (if we assume /dev/urandom is uniformly distributed)
+# takes the length n of the bitstring as parameter, n can be up to 56 bits
+get_n_rand_bits_alt() {
+  local n=$1
+  local nb_bytes=$(( (n+7)/8 ))
+  local rnd=$(od --read-bytes=$nb_bytes --address-radix=n --format=uL /dev/urandom | tr --delete " ")
+  echo $(( rnd>>(nb_bytes*8-n) ))
+}
+
+# for parameter max, generates an integer in the range {0..max} uniformly at random
+# max can be an arbitrary integer, needs not be a power of 2
+rand() {
+  local rnd max=$1
+  # get number of bits needed to represent $max
+  local bitlen=$(log2 $((max+1)))
+  while
+    # could use get_n_rand_bits_alt instead if /dev/urandom is preferred over $RANDOM
+    rnd=$(get_n_rand_bits $bitlen)
+    (( rnd > max ))
+  do :
+  done
+  echo $rnd
+}
+
+# MAIN SCRIPT
+
+# check number of parameters
+if (( $# != 1 && $# != 2 ))
+then
+  cat <<EOF 1>&2
+Usage: $(basename $0) [min] max
+
+Returns an integer distributed uniformly at random in the range {min..max}
+min defaults to 0
+(max - min) can be up to 2**60-1  
+EOF
+  exit 1
+fi
+
+# If we have one parameter, set min to 0 and max to $1
+# If we have two parameters, set min to $1 and max to $2
+max=0
+while (( $# > 0 ))
+do
+  min=$max
+  max=$1
+  shift
+done
+
+# ensure that min <= max
+if (( min > max ))
+then
+  echo "$(basename $0): error: min is greater than max" 1>&2
+  exit 1
+fi
+
+# need absolute value of diff since min (and also max) may be negative
+diff=$((max-min)) && diff=${diff#-}
+
+echo $(( $(rand $diff) + min ))
+
+}
+
+###############################################################################
+
+# Cater for GNU shuf, nice and fast
+if command -v shuf > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'shuf'"
+  fi
+  shuf -i "${min}"="${max}" -n "${count}"
+
+# If we're on a BSD based host, likely 'jot' is available, so let's use it
+elif command -v jot > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'jot'"
+  fi
+  for number in "${count}"; do
+    jot w %i -r 1 "${min}" "${max}"
+  done
+
+# Now we go non-native and try perl.  Very likely to be there,   
+# so very likely this will be the most commonly used option
+elif command -v perl > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'perl'"
+  fi
+  for number in "${count}"; do
+    perl -le '$mn=1; $mx=300; print int(rand($mx-$mn))+$mn '
+  done
+# Otherwise, we try python
+elif command -v python > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'python'"
+  fi
+  for number in "${count}"; do
+    python -c "import random; print random.randint(5,10)"
+  done
+# No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
+elif command -v awk > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'awk'"
+  fi
+  for number in "${count}"; do
+    awk -v min=5 -v max=10 'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
+    sleep 1
+  done
+# No perl, python or awk?   We're *really* regressing now.  Let's at least try for bash
+elif command -v
+
+
+# Finally, no perl, python, awk or bash... we're left with POSIX
+
+
+# Ultimate failure
+else
+  printf "%s\n" "[ERROR]: I could not find a valid method with which to process your request."
+  exit 1
+fi
+
+
