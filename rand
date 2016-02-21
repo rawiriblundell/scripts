@@ -41,6 +41,12 @@ while getopts "c:dh:m:M:" Flags; do
   esac
 done
 
+# Double check that we haven't done something silly like have nMax less than nMin
+if [ ${nMin} -ge ${nMax} ]; then
+  printf "%s\n" "[ERROR]: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
+  exit 1
+fi
+
 # Put these vars into the environment
 # Initially this is so we can import them to perl
 export nMin nMax
