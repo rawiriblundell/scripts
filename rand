@@ -4,6 +4,13 @@
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
 # Date:       20160222
 ###############################################################################
+# Inspiration taken from:
+# Colin Riddel provided the perl one liner that started this
+# 'rand' by Heiner Steven:
+# http://www.shelldorado.com/scripts/cmds/rand
+# 'rand' by Malte Skoruppa:
+# http://unix.stackexchange.com/questions/157250/how-to-efficiently-generate-large-uniformly-distributed-random-integers-in-bas
+###############################################################################
 # Set the default variable states
 nMin=1
 nMax=32767
@@ -14,8 +21,8 @@ count=1
 while getopts "c:dhm:M:" Flags; do
   case "${Flags}" in
     c)  case "${OPTARG}" in
-          (*[!0-9]*|'') printf "%s\n" "[ERROR]: (-c) '${OPTARG}' is not a number"; exit 1;;
-          (*)           count="${OPTARG}";;
+          *[!0-9]*|'') printf "%s\n" "[ERROR]: (-c) '${OPTARG}' is not a number"; exit 1;;
+          *)           count="${OPTARG}";;
         esac;;
     d)  debug="true";;
     h)  printf "%s\n" "rand - generate random integers" \
@@ -27,12 +34,12 @@ while getopts "c:dhm:M:" Flags; do
         "-M [maximum number (Default:${nMax})]"
         return 0;;
     m)  case "${OPTARG}" in
-          (*[!0-9]*|'') printf "%s\n" "[ERROR]: (-m) '${OPTARG}' is not a number"; exit 1;;
-          (*)           nMin="${OPTARG}";;
+          *[!0-9]*|'') printf "%s\n" "[ERROR]: (-m) '${OPTARG}' is not a number"; exit 1;;
+          *)           nMin="${OPTARG}";;
         esac;;
     M)  case "${OPTARG}" in
-          (*[!0-9]*|'') printf "%s\n" "[ERROR]: (-M) '${OPTARG}' is not a number"; exit 1;;
-          (*)           nMax="${OPTARG}";;
+          *[!0-9]*|'') printf "%s\n" "[ERROR]: (-M) '${OPTARG}' is not a number"; exit 1;;
+          *)           nMax="${OPTARG}";;
         esac;;
     \?)  echo "ERROR: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
          return 1;;
@@ -55,8 +62,8 @@ export nMin nMax
 repeat() {
   # check that $1 is a digit, if not error out, if so, set the repeatNum variable
   case "$1" in
-    (*[!0-9]*|'') printf "%s\n" "[ERROR]: '$1' is not a number.  Usage: 'repeat n command'"; return 1;;
-    (*)           local repeatNum=$1;;
+    *[!0-9]*|'') printf "%s\n" "[ERROR]: '$1' is not a number.  Usage: 'repeat n command'"; return 1;;
+    *)           local repeatNum=$1;;
   esac
   # shift so that the rest of the line is the command to execute
   shift
