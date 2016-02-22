@@ -63,7 +63,7 @@ repeat() {
   # check that $1 is a digit, if not error out, if so, set the repeatNum variable
   case "$1" in
     *[!0-9]*|'') printf "%s\n" "[ERROR]: '$1' is not a number.  Usage: 'repeat n command'"; return 1;;
-    *)           local repeatNum=$1;;
+    *)           typeset repeatNum=$1;;
   esac
   # shift so that the rest of the line is the command to execute
   shift
