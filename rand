@@ -134,8 +134,8 @@ elif command -v date > /dev/null 2>&1; then
   while [ $(( repeatNum -= 1 )) -ge 0 ]; do
     # Calc out a random number
     outRand=$(printf "%s\n" "${nRand} % ${nMax} + 1" | bc | tr -d '\134\012')
-	
-	  # Print it
+
+    # Print it
     printf "%s\n" "${outRand}"
   done
 
