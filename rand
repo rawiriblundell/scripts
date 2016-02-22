@@ -101,7 +101,14 @@ elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'awk'"
   fi
-  repeat "${count}" awk -v min="${nMin}" -v max="${nMax}" 'BEGIN{srand(); print int(min+rand()*(max-min+1))}' && sleep 1
+  # Ironically, we need to generate a random number to seed to awk to generate a random number
+  # If we use srand(), it will generate a random number based on a datestamp, which results in every repeat per second being duplicated
+  if [ -n "${RANDOM}" ]; then
+    seed="${RANDOM}"
+  elif [ -f /dev/urandom ]; then
+    seed=$(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -1)
+  fi
+  awk -v min="${nMin}" -v max="${nMax}" -v seed="${seed}" -v nNum="${count}" 'BEGIN{i = 0; while (i < nNum) { srand(seed); print int(min+rand()*(max-min+1)); ++i} }'
 
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # First, check if we have the RANDOM env var
@@ -109,17 +116,29 @@ elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'shell builtin RANDOM variable'"
   fi
+  
 # If there's no RANDOM var, we check for /dev/urandom
 elif [ -f /dev/urandom ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
   fi
+  
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's make up a random number based on $date
 elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'date'"
   fi
+  # Initialise nRand by adding the PID and timestamp
+  nRand=$(printf "%s\n" "$$ + $(date '+%H + %M + %S')" | bc)
+  while [ $(( repeatNum -= 1 )) -ge 0 ]; do
+    # Calc out a random number
+    outRand=$(printf "%s\n" "${nRand} % ${nMax} + 1" | bc | tr -d '\134\012')
+	
+	  # Print it
+    printf "%s\n" "${outRand}"
+  done
+
 # Ultimate failure
 else
   printf "%s\n" "[ERROR]: I could not find a valid method with which to process your request."
