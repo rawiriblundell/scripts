@@ -101,14 +101,7 @@ elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'awk'"
   fi
-  # Ironically, we need to generate a random number to seed to awk to generate a random number
-  # If we use srand(), it will generate a random number based on a datestamp, which results in every repeat per second being duplicated
-  if [ -n "${RANDOM}" ]; then
-    seed="${RANDOM}"
-  elif [ -f /dev/urandom ]; then
-    seed=$(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -1)
-  fi
-  awk -v min="${nMin}" -v max="${nMax}" -v seed="${seed}" -v nNum="${count}" 'BEGIN{i = 0; while (i < nNum) { srand(seed); print int(min+rand()*(max-min+1)); ++i} }'
+  awk -v min="${nMin}" -v max="${nMax}" -v nNum="${count}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min+1)); ++i} }'
 
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # First, check if we have the RANDOM env var
