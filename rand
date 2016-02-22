@@ -109,6 +109,8 @@ elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'shell builtin RANDOM variable'"
   fi
+  # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
+  repeat "${count}" printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % nMax - nMin + nMin ))"
   
 # If there's no RANDOM var, we check for /dev/urandom
 elif [ -f /dev/urandom ]; then
