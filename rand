@@ -55,7 +55,7 @@ if [ "${nMin}" -ge "${nMax}" ]; then
 fi
 
 # Put these vars into the environment so we can import them to perl etc
-export nMin nMax
+export nMin nMax count
 
 # If we are this far, let's add in this function that allows us to run a command x number of times
 # Works like: 'repeat 5 echo "pants"' = "pants" is echo'd 5 times
@@ -74,29 +74,8 @@ repeat() {
   done
 }
 ###############################################################################
-# We start by checking for /dev/urandom
-# If there's no RANDOM var, we check for /dev/urandom, this method allows
-# bulk numbers with large ranges.
-if [ -c /dev/urandom ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
-  fi
-
-  while [ $(( count -= 1 )) -ge 0 ]; do
-    # Generate a 10 char number
-    nRand=$(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -1)
-
-    # We need to prevent any generated numbers from starting with '0'
-    # simply swap it for '4', showing first the bashism way, then a more portable way
-    #nRand=${nRand/0/4}
-    nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
-
-    # Now we pass it through a modulus formula
-    printf "%s\n" "$(( nRand % nMax - nMin + 1 ))"
-  done
-
 # Cater for GNU shuf, nice and fast
-elif command -v shuf > /dev/null 2>&1; then
+if command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'shuf'"
   fi
@@ -115,14 +94,14 @@ elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'perl'"
   fi
-  repeat "${count}" perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; print int(rand($mx-$mn))+$mn '
+  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{count}; foreach my $i (0..$cn) { print int(rand($mx-$mn))+$mn ; }'
   
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'python'"
   fi
-  repeat "${count}" python -c "import random; print random.randint(${nMin},${nMax})"
+  python -c "for _ in xrange(${count}): import random; print random.randint(${nMin},${nMax})"
   
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
@@ -132,7 +111,26 @@ elif command -v awk > /dev/null 2>&1; then
   awk -v min="${nMin}" -v max="${nMax}" -v nNum="${count}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min+1)); ++i} }'
 
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
-# First, check if we have the RANDOM env var
+# We start by checking for /dev/urandom.  This method can allow for bulk numbers with large ranges.
+elif [ -c /dev/urandom ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
+  fi
+
+  while [ $(( count -= 1 )) -ge 0 ]; do
+    # Generate a 10 char number
+    nRand=$(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -1)
+
+    # We need to prevent any generated numbers from starting with '0'
+    # simply swap it for '4', showing first the bashism way, then a more portable way
+    #nRand=${nRand/0/4}
+    nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
+
+    # Now we pass it through a modulus formula
+    printf "%s\n" "$(( nRand % nMax - nMin + 1 ))"
+  done
+  
+# Next, check if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'shell builtin RANDOM variable'"
