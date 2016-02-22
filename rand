@@ -66,9 +66,30 @@ repeat() {
     "$@"
   done
 }
+###############################################################################
+# We start by checking for /dev/urandom
+# If there's no RANDOM var, we check for /dev/urandom, this method allows
+# bulk numbers with large ranges.
+if [ -f /dev/urandom ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
+  fi
+
+  while [ $(( count -= 1 )) -ge 0 ]; do
+    # Generate a 10 char number
+    nRand=$(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -1)
+
+    # We need to prevent any generated numbers from starting with '0'
+    # simply swap it for '4', showing first the bashism way, then a more portable way
+    #nRand=${nRand/0/4}
+    nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
+
+    # Now we pass it through a modulus formula
+    printf "%s\n" "$(( nRand % nMax - nMin + 1 ))"
+  done
 
 # Cater for GNU shuf, nice and fast
-if command -v shuf > /dev/null 2>&1; then
+elif command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'shuf'"
   fi
@@ -109,29 +130,30 @@ elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'shell builtin RANDOM variable'"
   fi
+
   # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
-  repeat "${count}" printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % nMax - nMin + nMin ))"
-  
-# If there's no RANDOM var, we check for /dev/urandom
-elif [ -f /dev/urandom ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
-  fi
+  repeat "${count}" printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % nMax - nMin + 1 ))"
   
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
-# Let's make up a random number based on $date
+# Let's try to make something using the date command
 elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'date'"
   fi
-  # Initialise nRand by adding the PID and timestamp
-  nRand=$(printf "%s\n" "$$ + $(date '+%H + %M + %S')" | bc)
-  while [ $(( repeatNum -= 1 )) -ge 0 ]; do
-    # Calc out a random number
-    outRand=$(printf "%s\n" "${nRand} % ${nMax} + 1" | bc | tr -d '\134\012')
 
-    # Print it
+  # make up a random number based on date and PID
+  nRand=$(printf "%s\n" "$$ + $(date '+%H + %M + %S')" | bc)
+  
+  while [ $(( count -= 1 )) -ge 0 ]; do
+    # Based on that, calc out a random number
+    outRand=$(( nRand % nMax - nMin + 1 ))
+
+    # Print it out
     printf "%s\n" "${outRand}"
+
+    # Adjust nRand by adding the last random number, 
+    # we use fold to limit nRand's length - just in case.
+    nRand=$(printf "%s\n" "$(( nRand + outRand ))" | fold -w 10)
   done
 
 # Ultimate failure
