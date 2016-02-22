@@ -2,7 +2,7 @@
 # Purpose:    This script attempts to generate random integers through any means necessary
 # Author:     Rawiri Blundell
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
-# Date:       15022016
+# Date:       20160222
 ###############################################################################
 # Set the default variable states
 nMin=1
@@ -42,14 +42,30 @@ while getopts "c:dh:m:M:" Flags; do
 done
 
 # Double check that we haven't done something silly like have nMax less than nMin
-if [ ${nMin} -ge ${nMax} ]; then
+if [ "${nMin}" -ge "${nMax}" ]; then
   printf "%s\n" "[ERROR]: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
   exit 1
 fi
 
-# Put these vars into the environment
-# Initially this is so we can import them to perl
+# Put these vars into the environment so we can import them to perl etc
 export nMin nMax
+
+# If we are this far, let's add in this function that allows us to run a command x number of times
+# Works like: 'repeat 5 echo "pants"' = "pants" is echo'd 5 times
+repeat() {
+  # check that $1 is a digit, if not error out, if so, set the repeatNum variable
+  case "$1" in
+    (*[!0-9]*|'') printf "%s\n" "[ERROR]: '$1' is not a number.  Usage: 'repeat n command'"; return 1;;
+    (*)           local repeatNum=$1;;
+  esac
+  # shift so that the rest of the line is the command to execute
+  shift
+
+  # Run the command in a while loop n times
+  while [ $(( repeatNum -= 1 )) -ge 0 ]; do
+    "$@"
+  done
+}
 
 # Cater for GNU shuf, nice and fast
 if command -v shuf > /dev/null 2>&1; then
@@ -63,9 +79,7 @@ elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'jot'"
   fi
-  for number in "${count}"; do
-    jot w %i -r 1 "${nMin}" "${nMax}"
-  done
+  repeat "${count}" jot w %i -r 1 "${nMin}" "${nMax}"
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
@@ -73,39 +87,41 @@ elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'perl'"
   fi
-  for number in "${count}"; do
-    perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; print int(rand($mx-$mn))+$mn '
-  done
+  repeat "${count}" perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; print int(rand($mx-$mn))+$mn '
   
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'python'"
   fi
-  for number in "${count}"; do
-    python -c "import random; print random.randint(${nMin},${nMax})"
-  done
+  repeat "${count}" python -c "import random; print random.randint(${nMin},${nMax})"
+  
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'awk'"
   fi
-  for number in "${count}"; do
-    awk -v min=5 -v max=10 'BEGIN{srand(); print int(min+rand()*(max-min+1))}'
-    sleep 1
-  done
+  repeat "${count}" awk -v min="${nMin}" -v max="${nMax}" 'BEGIN{srand(); print int(min+rand()*(max-min+1))}' && sleep 1
+
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # First, check if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
-
-
-# Finally, no perl, python, awk or bash... we're left with POSIX
-
-
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'shell builtin RANDOM variable'"
+  fi
+# If there's no RANDOM var, we check for /dev/urandom
+elif [ -f /dev/urandom ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
+  fi
+# If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
+# Let's make up a random number based on $date
+elif command -v date > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG]: Method used is 'date'"
+  fi
 # Ultimate failure
 else
   printf "%s\n" "[ERROR]: I could not find a valid method with which to process your request."
   exit 1
 fi
-
-
