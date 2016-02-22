@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env ksh
 # Purpose:    This script attempts to generate random integers through any means necessary
 # Author:     Rawiri Blundell
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
@@ -77,7 +77,7 @@ repeat() {
 # We start by checking for /dev/urandom
 # If there's no RANDOM var, we check for /dev/urandom, this method allows
 # bulk numbers with large ranges.
-if [ -f /dev/urandom ]; then
+if [ -c /dev/urandom ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
   fi
