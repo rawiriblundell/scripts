@@ -94,7 +94,7 @@ elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'perl'"
   fi
-  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{count}; foreach my $i (0..$cn) { print int(rand($mx-$mn))+$mn ; }'
+  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{count}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
   
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
