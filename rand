@@ -57,22 +57,6 @@ fi
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax count
 
-# If we are this far, let's add in this function that allows us to run a command x number of times
-# Works like: 'repeat 5 echo "pants"' = "pants" is echo'd 5 times
-repeat() {
-  # check that $1 is a digit, if not error out, if so, set the repeatNum variable
-  case "$1" in
-    *[!0-9]*|'') printf "%s\n" "[ERROR]: '$1' is not a number.  Usage: 'repeat n command'"; return 1;;
-    *)           typeset repeatNum=$1;;
-  esac
-  # shift so that the rest of the line is the command to execute
-  shift
-
-  # Run the command in a while loop n times
-  while [ $(( repeatNum -= 1 )) -ge 0 ]; do
-    "$@"
-  done
-}
 ###############################################################################
 # Cater for GNU shuf, nice and fast
 if command -v shuf > /dev/null 2>&1; then
@@ -137,8 +121,11 @@ elif [ -n "${RANDOM}" ]; then
   fi
 
   # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
-  repeat "${count}" printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % nMax - nMin + 1 ))"
-  
+  while (( count > 0 )); do
+    printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % nMax - nMin + 1 ))"
+    (( count = count - 1 ))
+  done
+
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something using the date command
 elif command -v date > /dev/null 2>&1; then
@@ -146,19 +133,21 @@ elif command -v date > /dev/null 2>&1; then
     printf "%s\n" "[DEBUG]: Method used is 'date'"
   fi
 
-  # make up a random number based on date and PID
+  # Make up a random number based on date and PID.  This is our random seed.
+  # Note: this is POSIX compliant 'date', if portability isn't a concern,
+  # you could use the GNUistic $(date '+%s%N') and maybe md5sum it for extra randomisation
   nRand=$(printf "%s\n" "$$ + $(date '+%H + %M + %S')" | bc)
   
   while [ $(( count -= 1 )) -ge 0 ]; do
-    # Based on that, calc out a random number
+    # Feed our random seed through the modulus formula and capture it to a var
     outRand=$(( nRand % nMax - nMin + 1 ))
 
     # Print it out
     printf "%s\n" "${outRand}"
 
-    # Adjust nRand by adding the last random number, 
+    # Adjust nRand by adding the last random number, then md5summing it 
     # we use fold to limit nRand's length - just in case.
-    nRand=$(printf "%s\n" "$(( nRand + outRand ))" | fold -w 10)
+    nRand=$(printf "%s\n" "$(( nRand + outRand ))" | md5sum | fold -w 10)
   done
 
 # Ultimate failure
