@@ -23,7 +23,7 @@ count=1
 while getopts "c:dhm:M:" Flags; do
   case "${Flags}" in
     c)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR]: (-c) '${OPTARG}' is not a number"; exit 1;;
+          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-c) '${OPTARG}' is not a number"; exit 1;;
           *)           count="${OPTARG}";;
         esac;;
     d)  debug="true";;
@@ -36,23 +36,23 @@ while getopts "c:dhm:M:" Flags; do
         "-M [maximum number (Default:${nMax})]"
         return 0;;
     m)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR]: (-m) '${OPTARG}' is not a number"; exit 1;;
+          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
           *)           nMin="${OPTARG}";;
         esac;;
     M)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR]: (-M) '${OPTARG}' is not a number"; exit 1;;
+          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-M) '${OPTARG}' is not a number"; exit 1;;
           *)           nMax="${OPTARG}";;
         esac;;
-    \?)  echo "ERROR: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
+    \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
          return 1;;
-    :)  echo "Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'" >&2
+    :)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'" >&2
         return 1;;
   esac
 done
 
 # Double check that we haven't done something silly like have nMax less than nMin
 if [ "${nMin}" -ge "${nMax}" ]; then
-  printf "%s\n" "[ERROR]: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
+  printf "%s\n" "[ERROR] rand: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
   exit 1
 fi
 
@@ -63,14 +63,14 @@ export nMin nMax count
 # Cater for GNU shuf, nice and fast
 if command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'shuf'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
   fi
   shuf -i "${nMin}"-"${nMax}" -n "${count}"
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'jot'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
   while (( count > 0 )); do
     jot w %i -r 1 "${nMin}" "${nMax}"
@@ -81,21 +81,21 @@ elif command -v jot > /dev/null 2>&1; then
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'perl'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
   fi
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{count}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
   
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'python'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'python'"
   fi
   python -c "for _ in xrange(${count}): import random; print random.randint(${nMin},${nMax})"
   
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'awk'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'awk'"
   fi
   awk -v min="${nMin}" -v max="${nMax}" -v nNum="${count}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min+1)); ++i} }'
 
@@ -103,7 +103,7 @@ elif command -v awk > /dev/null 2>&1; then
 # We start by checking for /dev/urandom.  This method can allow for bulk numbers with large ranges.
 elif [ -c /dev/urandom ]; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
+    printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
   fi
 
   for nRand in $(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -"${count}"); do
@@ -120,7 +120,7 @@ elif [ -c /dev/urandom ]; then
 # Next, check if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'shell builtin RANDOM variable'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
   fi
 
   # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
@@ -133,7 +133,7 @@ elif [ -n "${RANDOM}" ]; then
 # Let's try to make something using the date command
 elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG]: Method used is 'date'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
 
   # Make up a random number based on date and PID.  This is our random seed.
@@ -148,13 +148,13 @@ elif command -v date > /dev/null 2>&1; then
     # Print it out
     printf "%s\n" "${outRand}"
 
-    # Adjust nRand by adding the last random number, then md5summing it 
+    # Adjust nRand by adding the last random number 
     # we use fold to limit nRand's length - just in case.
-    nRand=$(printf "%s\n" "$(( nRand + outRand ))" | md5sum | fold -w 10)
+    nRand=$(printf "%s\n" "$(( nRand + outRand ))" | fold -w 10)
   done
 
 # Ultimate failure
 else
-  printf "%s\n" "[ERROR]: I could not find a valid method with which to process your request."
+  printf "%s\n" "[ERROR] rand: I could not find a valid method with which to process your request."
   exit 1
 fi
