@@ -72,7 +72,10 @@ elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG]: Method used is 'jot'"
   fi
-  repeat "${count}" jot w %i -r 1 "${nMin}" "${nMax}"
+  while (( count > 0 )); do
+    jot w %i -r 1 "${nMin}" "${nMax}"
+    (( count = count - 1 ))
+  done
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
@@ -103,13 +106,11 @@ elif [ -c /dev/urandom ]; then
     printf "%s\n" "[DEBUG]: Method used is '/dev/urandom'"
   fi
 
-  while [ $(( count -= 1 )) -ge 0 ]; do
-    # Generate a 10 char number
-    nRand=$(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -1)
-
+  for nRand in $(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -"${count}"); do
     # We need to prevent any generated numbers from starting with '0'
-    # simply swap it for '4', showing first the bashism way, then a more portable way
+    # simply swap it for '4', the bashism way is:
     #nRand=${nRand/0/4}
+    # The more portable 'sed' way incurs no performance penalty in a quick test:
     nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
 
     # Now we pass it through a modulus formula
