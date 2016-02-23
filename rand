@@ -1,8 +1,10 @@
-#!/usr/bin/env ksh
+#!/bin/bash
 # Purpose:    This script attempts to generate random integers through any means necessary
 # Author:     Rawiri Blundell
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
 # Date:       20160222
+# Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
+#              #!/usr/bin/env ksh will probably get you working on almost anything
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
