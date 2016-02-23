@@ -72,10 +72,7 @@ elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
-  while (( count > 0 )); do
-    jot w %i -r 1 "${nMin}" "${nMax}"
-    (( count = count - 1 ))
-  done
+  jot -w %i -r "${count}" "${nMin}" "${nMax}"
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
