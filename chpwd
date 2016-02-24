@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+
+# Purpose: This is a wrapper script for expect.chpwd
+#          This figures out the requirements e.g. user and password
+#          and does some pre-req checks
+
+# Author:  Rawiri Blundell, Datacom
+# Date:    October 2013
+
+# Variables
+WHOAMI=$(whoami)
+WORKDIR=$(pwd)
+LIST=serverlist
+ADMINPW="${WORKDIR}/.pwdfiler"
+USERPW="${WORKDIR}/.newpwd"
+MATCH=1
+ADMINMATCH=1
+LOGFILE=log.chpwd
+# We have to generate a password because pwgen usually isn't available
+# This is a Solaris friendly command, generating a random 10 char pwd
+GenPwd=$(tr -dc [:graph:] < /dev/urandom | fold -w 10 | head -1)
+
+# Preflight checks
+
+# Rotate logfile
+rm "${LOGFILE}".1
+mv "${LOGFILE}" "${LOGFILE}".1
+
+# Delete any existing password files
+rm -f "${ADMINPW}" "${USERPW}"
+rm -f "${ADMINPW}.bak" "${USERPW}.bak"
+
+# Check that $LIST exists
+if [ ! -f "${LIST}" ]; then
+        echo "File '${LIST}' is required and doesn't exist where I expect it"
+        echo " Please ensure this file is present in ${WORKDIR} "
+        exit 1
+fi
+
+# Greet
+echo "========================================"
+echo -e "\tYou are running ${0##*/}"
+echo "========================================"
+echo -e "\nThis script attempts to update a user password across"
+echo " all the servers in the file '${LIST}'"
+echo -e "\nThis assumes you have sshkeys and sudo access on all servers listed"
+echo "If not, consider exiting and sorting that out."
+echo -e " My friend ./expect.sshkeys can help you with that\n"
+read -p "Press [Enter] to continue or Ctrl-C to exit"
+
+# Interaction
+
+# Start by prompting for the username to process, if none is given, default to the script runner
+echo -n "Please enter the username to update and press [Enter] (default: ${WHOAMI}): "
+read userin
+
+# Set the USER variable based on the interaction
+if [ "${userin}" == "" ]; then
+        USER="${WHOAMI}"
+else
+        USER="${userin}"
+fi
+
+# Prompt for the new password twice
+while [ "${MATCH}" -gt "0" ]; do
+        echo "================================"
+        echo -ne "Please enter the new password for ${USER} and press [Enter] (default: ${GenPwd}): "
+        read -s pwdin1
+		# If the read is blank, we default to the generated password
+		if [ "${pwdin1}" == "" ]; then
+	                echo "${GenPwd}" > "${USERPW}"
+                	# And give the condition to exit the while loop
+			MATCH=0
+		else
+	 		# Otherwise, we prompt again for the password
+	        	echo -ne "\nPlease confirm the new password and press [Enter]: "
+        		read -s pwdin2
+
+	        	# Compare the two, if they don't match, try again
+	        	if [ "${pwdin1}" != "${pwdin2}" ]; then
+        	        	echo ""
+	        	        read -p "The passwords entered do not match.  Press [Enter] to start again."
+        	        	MATCH=$(( MATCH + 1 ))
+		        else
+        		        # If the passwords match, write it to .newpwd
+                		echo "${pwdin1}" > "${USERPW}"
+	                	# And give the condition to exit the while loop
+	        	        MATCH=0
+		        fi	
+		fi
+done
+
+# Prompt for the admin password twice
+while [ "${ADMINMATCH}" -gt "0" ]; do
+        echo -e "\n================================"
+        echo -ne "Please enter your password to authorise this work and press [Enter]: "
+        read -s adminpwdin1
+        echo -ne "\nPlease confirm your password and press [Enter]: "
+        read -s adminpwdin2
+
+        # Compare the two, if they don't match, try again
+        if [ "${adminpwdin1}" != "${adminpwdin2}" ]; then
+                echo ""
+                read -p "The passwords entered do not match.  Press [Enter] to start again."
+                ADMINMATCH=$(( ADMINMATCH + 1 ))
+        else
+                # If the passwords match, write it to .pwdfiler
+                echo "${adminpwdin1}" > "${ADMINPW}"
+                # And give the condition to exit the while loop
+                ADMINMATCH=0
+        fi
+done
+
+# Secure the password store files so that they're readable only by the owner
+#  ... and anyone with sufficient sudo or su access
+chmod 600 "${USERPW}" "${ADMINPW}"
+
+# Finally, kick off the heavy lifting
+
+# Run a loop, feeding the servername and username to expect.chpwd
+# This will read the respective passwords from .newpwd and .pwdfiler
+for H in $(<$LIST); do
+	echo ""
+	./expect.chpwd "${H}" "${USER}"
+done
+
+echo -e "\n================================"
+echo -e "Operation complete. Please notify the user that their password is: " 
+echo -e "\n================================"
+echo -e "$(<.newpwd)"
+echo -e "================================\n"
+
+echo "Please review the logfile to find any outstanding tasks to be done."
+echo "Hint: grep for ERROR, WARN and INFO"
+
+# Finally, delete the password files so that the passwords aren't available to curious sudoers.
+rm -f "${ADMINPW}" "${USERPW}"
