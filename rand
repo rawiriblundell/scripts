@@ -94,7 +94,7 @@ elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'awk'"
   fi
-  awk -v min="${nMin}" -v max="${nMax}" -v nNum="${count}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min+1)); ++i} }'
+  awk -v min="${nMin}" -v max="${nMax}" -v nNum="${count}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking for /dev/urandom.  This method can allow for bulk numbers with large ranges.
@@ -111,7 +111,7 @@ elif [ -c /dev/urandom ]; then
     nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
 
     # Now we pass it through a modulus formula
-    printf "%s\n" "$(( nRand % nMax - nMin + 1 ))"
+    printf "%s\n" "$(( nRand % (nMax - nMin) + nMin ))"
   done
   
 # Next, check if we have the RANDOM env var
@@ -122,7 +122,7 @@ elif [ -n "${RANDOM}" ]; then
 
   # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
   while (( count > 0 )); do
-    printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % nMax - nMin + 1 ))"
+    printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % (nMax - nMin) + nMin ))"
     (( count = count - 1 ))
   done
 
@@ -140,7 +140,7 @@ elif command -v date > /dev/null 2>&1; then
   
   while [ $(( count -= 1 )) -ge 0 ]; do
     # Feed our random seed through the modulus formula and capture it to a var
-    outRand=$(( nRand % nMax - nMin + 1 ))
+    outRand=$(( nRand % (nMax - nMin) + nMin ))
 
     # Print it out
     printf "%s\n" "${outRand}"
