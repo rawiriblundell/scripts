@@ -65,7 +65,7 @@ if command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
   fi
-  shuf -i "${nMin}"-"${nMax}" -n "${count}"
+  shuf -i "${nMin}"-"${nMax}" -n "${count}" -r
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 elif command -v jot > /dev/null 2>&1; then
