@@ -34,7 +34,7 @@ while getopts "c:dhm:M:" Flags; do
         "-h [help]" \
         "-m [minimum number (Default:${nMin})]" \
         "-M [maximum number (Default:${nMax})]"
-        return 0;;
+        exit 0;;
     m)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
           *)           nMin="${OPTARG}";;
@@ -44,9 +44,9 @@ while getopts "c:dhm:M:" Flags; do
           *)           nMax="${OPTARG}";;
         esac;;
     \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
-         return 1;;
+         exit 1;;
     :)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'" >&2
-        return 1;;
+        exit 1;;
   esac
 done
 
