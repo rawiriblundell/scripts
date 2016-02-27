@@ -16,7 +16,8 @@
 # Set the default variable states
 nMin=1
 #nMax=32767
-nMax=9223372036854775807 # Signed 64-bit integer limit
+nMax=4294967295           #2^32 = 4 GB
+#nMax=9223372036854775807 # Signed 64-bit integer limit
 debug=false
 count=1
 
@@ -104,7 +105,7 @@ elif [ -c /dev/urandom ]; then
     printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
   fi
 
-  for nRand in $(tr -dc 0-9 < /dev/urandom | fold -w 10 | head -"${count}"); do
+  for nRand in $(tr -dc 0-9 < /dev/urandom | fold -w "${#nMax}" | head -"${count}"); do
     # We need to prevent any generated numbers from starting with '0'
     # simply swap it for '4', the bashism way is:
     #nRand=${nRand/0/4}
