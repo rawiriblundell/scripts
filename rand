@@ -15,7 +15,8 @@
 ###############################################################################
 # Set the default variable states
 nMin=1
-nMax=32767
+#nMax=32767
+nMax=9223372036854775807 # Signed 64-bit integer limit
 debug=false
 count=1
 
@@ -27,7 +28,7 @@ while getopts "c:dhm:M:" Flags; do
           *)           count="${OPTARG}";;
         esac;;
     d)  debug="true";;
-    h)  printf "%s\n" "rand - generate random integers" \
+    h)  printf "%s\n" "rand - generate random positive integers" \
         "Optional Arguments:" \
         "-c [count.  Number of numbers (Default:${count})]" \
         "-d [debug.  Tells you which processing method is used (Default:off)]" \
