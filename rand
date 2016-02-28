@@ -4,7 +4,7 @@
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
 # Date:       20160222
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
-#              #!/usr/bin/env ksh will probably get you working on almost anything
+#              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
@@ -16,22 +16,23 @@
 # Set the default variable states
 nMin=1
 #nMax=32767
-nMax=4294967295           #2^32 = 4 GB
-#nMax=9223372036854775807 # Signed 64-bit integer limit
+#nMax=4294967295           #2^32-1
+#nMax=72057594037927935    #2^56-1
+nMax=9223372036854775807   #2^63-1
 debug=false
-count=1
+nCount=1
 
 # Getopts
 while getopts "c:dhm:M:" Flags; do
   case "${Flags}" in
     c)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-c) '${OPTARG}' is not a number"; exit 1;;
-          *)           count="${OPTARG}";;
+          *)           nCount="${OPTARG}";;
         esac;;
     d)  debug="true";;
     h)  printf "%s\n" "rand - generate random positive integers" \
         "Optional Arguments:" \
-        "-c [count.  Number of numbers (Default:${count})]" \
+        "-c [count.  Number of numbers (Default:${nCount})]" \
         "-d [debug.  Tells you which processing method is used (Default:off)]" \
         "-h [help]" \
         "-m [minimum number (Default:${nMin})]" \
@@ -59,7 +60,7 @@ if [ "${nMin}" -ge "${nMax}" ]; then
 fi
 
 # Put these vars into the environment so we can import them to perl etc
-export nMin nMax count
+export nMin nMax nCount
 
 ###############################################################################
 # Cater for GNU shuf, nice and fast
@@ -67,14 +68,14 @@ if command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
   fi
-  shuf -i "${nMin}"-"${nMax}" -n "${count}" -r
+  shuf -i "${nMin}"-"${nMax}" -n "${nCount}" -r
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
-  jot -w %i -r "${count}" "${nMin}" "${nMax}"
+  jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
@@ -82,21 +83,21 @@ elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
   fi
-  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{count}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
+  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
   
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'python'"
   fi
-  python -c "for _ in xrange(${count}): import random; print random.randint(${nMin},${nMax})"
+  python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
   
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'awk'"
   fi
-  awk -v min="${nMin}" -v max="${nMax}" -v nNum="${count}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  awk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking for /dev/urandom.  This method can allow for bulk numbers with large ranges.
@@ -105,17 +106,44 @@ elif [ -c /dev/urandom ]; then
     printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
   fi
 
-  for nRand in $(tr -dc 0-9 < /dev/urandom | fold -w "${#nMax}" | head -"${count}"); do
-    # We need to prevent any generated numbers from starting with '0'
-    # simply swap it for '4', the bashism way is:
-    #nRand=${nRand/0/4}
-    # The more portable 'sed' way incurs no performance penalty in a quick test:
-    nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
+  # If performance is more important to you than functionality, uncomment this
+  # This will have the effect of limiting this mode to 56 bit integers
+  # Which makes '&& (nRandShift + nMin) > 0' effectively redundant.
+  #if (( nMax > (2**56-1) )); then
+  #  nMax=$((2**56-1))
+  #fi
 
-    # Now we pass it through a modulus formula
-    printf "%s\n" "$(( nRand % (nMax - nMin) + nMin ))"
+  # We need to know the number of bits required to represent nMax (i.e. bitlength)
+  logn=1
+  nBitlen=0
+  while (( (nMax - nMin) > logn && logn > 0 )); do
+    let logn*=2 nBitlen++
   done
-  
+
+  # The lowest number of bytes needed to get at least n bits is the
+  # lowest multiple of 8 that is greater than or equal to n
+  nBytes=$(( (nBitlen + 7) / 8 ))
+
+  # Start a loop based on nCount.  I thought of other ways, but this works easier
+  # and can be made more portable if testing proves the need to do so
+  while (( nCount > 0 )); do
+
+    # Get a string of bytes from /dev/urandom using od
+    nRand=$(od -N "${nBytes}" -A n -t uL /dev/urandom | tr -d " ")
+
+    # Now we bitshift to the right
+    nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
+
+    # Next we test if the number we've generated fits into our range.  If so,
+    # then we can use it and iterate the while loop
+    # We add a test for greater than 0, as we want to print positive integers
+    # This has a performance hit, but is for consistency with the other methods used
+    if (( (nRandShift + nMin) < nMax && (nRandShift + nMin) > 0 )); then
+      printf "%s\n" "$(( nRandShift + nMin ))"
+      (( nCount = nCount - 1 ))
+    fi
+  done    
+ 
 # Next, check if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
@@ -123,9 +151,9 @@ elif [ -n "${RANDOM}" ]; then
   fi
 
   # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
-  while (( count > 0 )); do
+  while (( nCount > 0 )); do
     printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % (nMax - nMin) + nMin ))"
-    (( count = count - 1 ))
+    (( nCount = nCount - 1 ))
   done
 
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
@@ -140,7 +168,7 @@ elif command -v date > /dev/null 2>&1; then
   # you could use the GNUistic $(date '+%s%N') and maybe md5sum it for extra randomisation
   nRand=$(printf "%s\n" "$$ + $(date '+%H + %M + %S')" | bc)
   
-  while [ $(( count -= 1 )) -ge 0 ]; do
+  while [ $(( nCount -= 1 )) -ge 0 ]; do
     # Feed our random seed through the modulus formula and capture it to a var
     outRand=$(( nRand % (nMax - nMin) + nMin ))
 
