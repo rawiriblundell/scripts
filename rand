@@ -100,18 +100,11 @@ elif command -v awk > /dev/null 2>&1; then
   awk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
-# We start by checking for /dev/urandom.  This method can allow for bulk numbers with large ranges.
-elif [ -c /dev/urandom ]; then
+# We start by checking if we have the RANDOM env var
+elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
   fi
-
-  # If performance is more important to you than functionality, uncomment this
-  # This will have the effect of limiting this mode to 56 bit integers
-  # Which makes '&& (nRandShift + nMin) > 0' effectively redundant.
-  #if (( nMax > (2**56-1) )); then
-  #  nMax=$((2**56-1))
-  #fi
 
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
   logn=1
@@ -123,44 +116,8 @@ elif [ -c /dev/urandom ]; then
     nBitlen=$(( nBitlen + 1 ))
   done
 
-  # The lowest number of bytes needed to get at least n bits is the
-  # lowest multiple of 8 that is greater than or equal to n
-  nBytes=$(( (nBitlen + 7) / 8 ))
-
   # Start a loop based on nCount.  I thought of other ways, but this works easier
   # and can be made more portable if testing proves the need to do so
-  while [ "${nCount}" -gt 0 ]; do
-
-    # Get a string of bytes from /dev/urandom using od
-    nRand=$(od -N "${nBytes}" -A n -t uL /dev/urandom | tr -d " ")
-
-    # Now we bitshift to the right
-    nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
-
-    # Next we test if the number we've generated fits into our range.  If so,
-    # then we can use it and iterate the while loop
-    # We add a test for greater than 0, as we want to print positive integers
-    # This has a performance hit, but is for consistency with the other methods used
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
-      printf "%s\n" "$(( nRandShift + nMin ))"
-      nCount=$(( nCount - 1 ))
-    fi
-  done    
- 
-# Next, check if we have the RANDOM env var
-# Comments as per the last section
-elif [ -n "${RANDOM}" ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
-  fi
-
-  logn=1
-  nBitlen=0
-  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
-    logn=$(( logn * 2 ))
-    nBitlen=$(( nBitlen + 1 ))
-  done
-
   while [ "${nCount}" -gt 0 ]; do
     rndBitlen=15
     rnd=$RANDOM # Capture one output sample of RANDOM
@@ -173,12 +130,55 @@ elif [ -n "${RANDOM}" ]; then
     # Now bitshift it right
     nRandShift=$(( rnd>>(rndBitlen-nBitlen) ))
 
+    # Next we test if the number we've generated fits into our range.  If so,
+    # then we can use it and iterate the while loop
+    # We add a test for greater than 0, as we want to print positive integers
+    # This has a performance hit, but is for consistency with the other methods used
     if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
   done
 
+
+# Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
+elif [ -c /dev/urandom ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
+  fi
+
+  # If performance is more important to you than functionality, uncomment this
+  # This will have the effect of limiting this mode to 56 bit integers
+  # Which makes '&& (nRandShift + nMin) > 0' effectively redundant.
+  #if (( nMax > (2**56-1) )); then
+  #  nMax=$((2**56-1))
+  #fi
+
+  logn=1
+  nBitlen=0
+  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
+    logn=$(( logn * 2 ))
+    nBitlen=$(( nBitlen + 1 ))
+  done
+
+  # The lowest number of bytes needed to get at least n bits is the
+  # lowest multiple of 8 that is greater than or equal to n
+  nBytes=$(( (nBitlen + 7) / 8 ))
+
+  while [ "${nCount}" -gt 0 ]; do
+
+    # Get a string of bytes from /dev/urandom using od
+    nRand=$(od -N "${nBytes}" -A n -t uL /dev/urandom | tr -d " ")
+
+    # Now we bitshift to the right
+    nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
+
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+      printf "%s\n" "$(( nRandShift + nMin ))"
+      nCount=$(( nCount - 1 ))
+    fi
+  done    
+ 
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something using the date command
 elif command -v date > /dev/null 2>&1; then
