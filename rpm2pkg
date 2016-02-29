@@ -147,7 +147,7 @@ if [[ -n "${PreInst}" ]]; then
   #  Validate that it's a file we can get to.  If so, copy it
   if [[ -f "${PreInst}" ]]; then
     cp "${PreInst}" "${TmpDir}"/preinstall
-    printf "%s\n" "[INFO]: Copied preinstall script from ${PreInst} to '${TmpDir}/preinstall'"
+    printf "%s\n" "[INFO]: Copied pre-install script from ${PreInst} to '${TmpDir}/preinstall'"
   # Otherwise, error out.
   else
     printf "%s\n" "[ERROR]: '${PreInst}' does not appear to exist"
@@ -158,7 +158,7 @@ if [[ -n "${PreInst}" ]]; then
 else
   if ! rpm -qp --queryformat '%{PREIN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{PREIN}\n' "${OrigRPM}" > "${TmpDir}"/preinstall
-    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/preinstall'"
+    printf "%s\n" "[INFO]: Copied pre-install script from ${OrigRPM} to '${TmpDir}/preinstall'"
   fi
 fi
 
@@ -168,7 +168,7 @@ fi
 if [[ -n "${PostInst}" ]]; then
   if [[ -f "${PostInst}" ]]; then
     cp "${PostInst}" "${TmpDir}"/postinstall
-    printf "%s\n" "[INFO]: Copied preinstall script from '${PostInst}' to '${TmpDir}/postinstall'"
+    printf "%s\n" "[INFO]: Copied post-install script from '${PostInst}' to '${TmpDir}/postinstall'"
   else
     printf "%s\n" "[ERROR]: '${PostInst}' does not appear to exist"
     exit 1
@@ -176,7 +176,7 @@ if [[ -n "${PostInst}" ]]; then
 else
   if ! rpm -qp --queryformat '%{POSTIN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{POSTIN}\n' "${OrigRPM}" > "${TmpDir}"/postinstall
-    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/postinstall'"
+    printf "%s\n" "[INFO]: Copied post-install script from ${OrigRPM} to '${TmpDir}/postinstall'"
   fi
 fi
 
@@ -184,7 +184,7 @@ fi
 if [[ -n "${PreUninst}" ]]; then
   if [[ -f "${PreUninst}" ]]; then
     cp "${PreUninst}" "${TmpDir}"/preremove
-    printf "%s\n" "[INFO]: Copied preinstall script from '${PreUninst}' to '${TmpDir}/preremove'"
+    printf "%s\n" "[INFO]: Copied pre-uninstall script from '${PreUninst}' to '${TmpDir}/preremove'"
   else
     printf "%s\n" "[ERROR]: '${PreUninst}' does not appear to exist"
     exit 1
@@ -192,7 +192,7 @@ if [[ -n "${PreUninst}" ]]; then
 else
   if ! rpm -qp --queryformat '%{PREUN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{PREUN}\n' "${OrigRPM}" > "${TmpDir}"/preremove
-    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/preremove'"
+    printf "%s\n" "[INFO]: Copied pre-uninstall script from ${OrigRPM} to '${TmpDir}/preremove'"
   fi
 fi
 
@@ -200,7 +200,7 @@ fi
 if [[ -n "${PostUninst}" ]]; then
   if [[ -f "${PostUninst}" ]]; then
     cp "${PreInst}" "${TmpDir}"/postremove
-    printf "%s\n" "[INFO]: Copied preinstall script from '${PostUninst}' to '${TmpDir}/postremove'"
+    printf "%s\n" "[INFO]: Copied post-uninstall script from '${PostUninst}' to '${TmpDir}/postremove'"
   else
     printf "%s\n" "[ERROR]: '${PostUninst}' does not appear to exist"
     exit 1
@@ -208,7 +208,7 @@ if [[ -n "${PostUninst}" ]]; then
 else
   if ! rpm -qp --queryformat '%{POSTUN}\n' "${OrigRPM}" | grep "(none)" &>/dev/null; then
     rpm -qp --queryformat '%{POSTUN}\n' "${OrigRPM}" > "${TmpDir}"/postremove
-    printf "%s\n" "[INFO]: Copied preinstall script from ${OrigRPM} to '${TmpDir}/postremove'"
+    printf "%s\n" "[INFO]: Copied post-uninstall script from ${OrigRPM} to '${TmpDir}/postremove'"
   fi
 fi
 ###############################################################################
