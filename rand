@@ -75,6 +75,13 @@ elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
+  
+  # If nMax is less than 2^63-1, then we add one to correct distribution
+  if (( nMax < (2**63-1) )); then
+    nMax=$(( nMax + 1 ))
+  fi
+  
+  # Now we generate our output
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 
 # Now we start going less-native and try perl.  Very likely to be there,   
