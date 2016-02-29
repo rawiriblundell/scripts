@@ -4,7 +4,7 @@
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
 # Date:       20160222
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
-#              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
+#              #!/usr/bin/env ksh will probably get you working on almost anything
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
@@ -116,8 +116,11 @@ elif [ -c /dev/urandom ]; then
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
   logn=1
   nBitlen=0
-  while (( (nMax - nMin) > logn && logn > 0 )); do
-    let logn*=2 nBitlen++
+  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
+    # We increase by a power of two each time
+    logn=$(( logn * 2 ))
+    # And count how many times it takes until the while loop exits
+    nBitlen=$(( nBitlen + 1 ))
   done
 
   # The lowest number of bytes needed to get at least n bits is the
@@ -126,7 +129,7 @@ elif [ -c /dev/urandom ]; then
 
   # Start a loop based on nCount.  I thought of other ways, but this works easier
   # and can be made more portable if testing proves the need to do so
-  while (( nCount > 0 )); do
+  while [ "${nCount}" -gt 0 ]; do
 
     # Get a string of bytes from /dev/urandom using od
     nRand=$(od -N "${nBytes}" -A n -t uL /dev/urandom | tr -d " ")
@@ -138,9 +141,9 @@ elif [ -c /dev/urandom ]; then
     # then we can use it and iterate the while loop
     # We add a test for greater than 0, as we want to print positive integers
     # This has a performance hit, but is for consistency with the other methods used
-    if (( (nRandShift + nMin) < nMax && (nRandShift + nMin) > 0 )); then
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
-      (( nCount = nCount - 1 ))
+      nCount=$(( nCount - 1 ))
     fi
   done    
  
@@ -151,9 +154,9 @@ elif [ -n "${RANDOM}" ]; then
   fi
 
   # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
-  while (( nCount > 0 )); do
+  while [ "${nCount}" -gt 0 ]; do
     printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % (nMax - nMin) + nMin ))"
-    (( nCount = nCount - 1 ))
+    nCount=$(( nCount - 1 ))
   done
 
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
