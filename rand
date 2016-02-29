@@ -148,15 +148,35 @@ elif [ -c /dev/urandom ]; then
   done    
  
 # Next, check if we have the RANDOM env var
+# Comments as per the last section
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
   fi
 
-  # amp up RANDOM to a 30-bit integer, then pass it the rest of the formula
+  logn=1
+  nBitlen=0
+  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
+    logn=$(( logn * 2 ))
+    nBitlen=$(( nBitlen + 1 ))
+  done
+
   while [ "${nCount}" -gt 0 ]; do
-    printf "%s\n" "$(( ((RANDOM<<15)|RANDOM) % (nMax - nMin) + nMin ))"
-    nCount=$(( nCount - 1 ))
+    rndBitlen=15
+    rnd=$RANDOM # Capture one output sample of RANDOM
+    while [ "${rndBitlen}" -lt "${nBitlen}" ]; do
+      # Bitshift RANDOM to the left to stack it i.e. 15 int -> 30 int -> 45 int etc
+      rnd=$(( rnd<<15|RANDOM ))
+      # Keep stacking until the while loop exits
+      rndBitlen=$(( rndBitlen + 15 ))
+    done
+    # Now bitshift it right
+    nRandShift=$(( rnd>>(rndBitlen-nBitlen) ))
+
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+      printf "%s\n" "$(( nRandShift + nMin ))"
+      nCount=$(( nCount - 1 ))
+    fi
   done
 
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
