@@ -65,6 +65,19 @@ fi
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax nCount
 
+# xor function modified from http://zurlinux.com/?p=712
+Fn_xor() {
+  while read -r line; do
+    i=0
+    while [ "$i" -lt "${#line}" ]; do
+     ord=$(printf "%d" "'${line:$i:1}")
+     # shellcheck disable=SC2059
+     printf \\"$(printf '%03o' $((ord ^ 90)) )"
+     i=$(( i + 1 ))
+    done
+  done
+}
+
 ###############################################################################
 # Cater for GNU shuf, nice and fast
 if command -v shuf > /dev/null 2>&1; then
@@ -216,25 +229,25 @@ elif command -v date > /dev/null 2>&1; then
   done
   
   # Let's generate some "entropy" by simply running through this list of commands
-  # And trying to remove as much whitespace as possible
+  # And trying to remove as much whitespace as possible, then xor, then hash it
   {
-    ps -aux 2>/dev/null | tr -d " " | tr -d "\n"
-    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
-    top -n 1 2>/dev/null | tr -d " " | tr -d "\n"
-    date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
-    df -k 2>/dev/null | tr -d " " | tr -d "\n" 
-    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
-    netstat -a 2>/dev/null | tr -d " " | tr -d "\n"
-    date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
-    vmstat -i 2>/dev/null | tr -d " " | tr -d "\n"
-    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
-    vmstat -s 2>/dev/null | tr -d " " | tr -d "\n"
-    date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
-    iostat 2>/dev/null | tr -d " " | tr -d "\n"
-    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
-    pstat -afipSsT 2>/dev/null | tr -d " " | tr -d "\n"
-  } >> /tmp/entropy
-  
+    ps -aux 2>/dev/null
+    printf "%s" "$$"
+    top -n 1 2>/dev/null
+    date '+%H%M%S'
+    df -k 2>/dev/null 
+    printf "%s" "$$"
+    netstat -a 2>/dev/null
+    date '+%H%M%S'
+    vmstat -i 2>/dev/null
+    printf "%s" "$$"
+    vmstat -s 2>/dev/null
+    date '+%H%M%S'
+    iostat 2>/dev/null
+    printf "%s" "$$"
+    pstat -afipSsT 2>/dev/null
+  } | tr -d " " | tr -d "\n" | Fn_xor | "${crypt}" >> /tmp/entropy
+
   logn=1
   nBitlen=0
   while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
@@ -242,8 +255,6 @@ elif command -v date > /dev/null 2>&1; then
     nBitlen=$(( nBitlen + 1 ))
   done
 
-  # The lowest number of bytes needed to get at least n bits is the
-  # lowest multiple of 8 that is greater than or equal to n
   nBytes=$(( (nBitlen + 7) / 8 ))
   
   # Don't let it drop below 2
@@ -259,18 +270,20 @@ elif command -v date > /dev/null 2>&1; then
     if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
 
+      # Now remove the leading nBytes of the entropy file, temporarily store
+      tail -c +"${nBytes}" /tmp/entropy | tr -d "\n" > /tmp/entropy2
+
       # Seed some more data into the entropy file
       {
-        # Rotate the entropy, get the first 16 chars and hash it to the bottom of the file
-        printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | "${crypt}" | tr -d " ")"
-        printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
-        date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
-      } >> /tmp/entropy
+        # Rotate the entropy, get the first 16 chars, xor and hash it to the bottom of the file
+        printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | Fn_xor | "${crypt}" | tr -d " ")"
+        printf "%s" "$$" | Fn_xor | ${crypt} | tr -d " " | tr -d "\n"
+        date '+%H%M%S' | Fn_xor | ${crypt} | tr -d " " | tr -d "\n"
+      } >> /tmp/entropy2
 	  
-      # Now remove the leading nBytes of the entropy file
-      tail -c +"${nBytes}" /tmp/entropy | tr -d "\n" > /tmp/entropy2
+      # Move the tempstore back into place
       mv /tmp/entropy2 /tmp/entropy
-	  
+
       nCount=$(( nCount - 1 ))
     fi
   done
