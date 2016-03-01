@@ -159,7 +159,7 @@ elif [ -n "${RANDOM}" ]; then
     # then we can use it and iterate the while loop
     # We add a test for greater than 0, as we want to print positive integers
     # This has a performance hit, but is for consistency with the other methods used
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
@@ -198,7 +198,7 @@ elif [ -c /dev/urandom ]; then
     # Now we bitshift to the right
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
@@ -267,7 +267,7 @@ elif command -v date > /dev/null 2>&1; then
     #nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
 
       # Now remove the leading nBytes of the entropy file, temporarily store
