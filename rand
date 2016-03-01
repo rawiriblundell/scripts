@@ -205,11 +205,11 @@ elif command -v date > /dev/null 2>&1; then
     if command -v md5sum > /dev/null 2>&1; then
       crypt="md5sum" # Should cover most hosts
     elif command -v digest > /dev/null 2>&1; then
-      crypt=$(digest -v -a md5) # Solaris hosts without md5sum
+      crypt="digest -v -a md5" # Solaris hosts without md5sum
     elif command -v csum > /devnull 2>&1; then
-      crypt=$(csum)  # Should cater for most AIX hosts
+      crypt="csum"  # Should cater for most AIX hosts
     elif command -v cksum > /dev/null 2>&1; then
-      crypt=$(cksum) # Last chance catch-all attempt
+      crypt="cksum" # Last chance catch-all attempt
     else
       printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
       exit 1
