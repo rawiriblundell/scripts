@@ -193,7 +193,7 @@ elif [ -c /dev/urandom ]; then
 
 #######################################  
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
-# Let's try to make something up.  
+# Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
 # Originally this was based off PID + date, but was rewritten to be closer to the /dev/urandom method
 elif command -v date > /dev/null 2>&1; then
@@ -201,19 +201,19 @@ elif command -v date > /dev/null 2>&1; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
   
-  # First,let's figure out which hashing methods are available to us
-    if command -v md5sum > /dev/null 2>&1; then
-      crypt="md5sum" # Should cover most hosts
-    elif command -v digest > /dev/null 2>&1; then
-      crypt="digest -v -a md5" # Solaris hosts without md5sum
-    elif command -v csum > /devnull 2>&1; then
-      crypt="csum"  # Should cater for most AIX hosts
-    elif command -v cksum > /dev/null 2>&1; then
-      crypt="cksum" # Last chance catch-all attempt
+  # Let's try and find a hashing method
+  for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
+    if command -v "${cryptopt}" > /dev/null 2>&1; then
+      crypt="${cryptopt}"
+      if [ "${crypt}" = digest ]; then
+        crypt="digest -v -a md5"
+      fi
+      break
     else
       printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
       exit 1
     fi
+  done
   
   # Let's generate some "entropy" by simply running through this list of commands
   # And trying to remove as much whitespace as possible
@@ -261,7 +261,7 @@ elif command -v date > /dev/null 2>&1; then
 
       # Seed some more data into the entropy file
       {
-        # Rotate the entropy, get the first 16 chars and md5sum it to the bottom of the file
+        # Rotate the entropy, get the first 16 chars and hash it to the bottom of the file
         printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | "${crypt}" | tr -d " ")"
         printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
         date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
