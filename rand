@@ -4,7 +4,7 @@
 # Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
 # Date:       20160222
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
-#              #!/usr/bin/env ksh will probably get you working on almost anything
+#              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
@@ -12,6 +12,8 @@
 # http://www.shelldorado.com/scripts/cmds/rand
 # 'rand' by Malte Skoruppa:
 # http://unix.stackexchange.com/questions/157250/how-to-efficiently-generate-large-uniformly-distributed-random-integers-in-bas
+# 'randbits' by Gene Spafford:
+# http://www.diablotin.com/librairie/networking/puis/ch23_09.htm
 ###############################################################################
 # Set the default variable states
 nMin=1
@@ -19,6 +21,7 @@ nMin=1
 #nMax=4294967295           #2^32-1
 #nMax=72057594037927935    #2^56-1
 nMax=9223372036854775807   #2^63-1
+nMax263=9223372036854775807
 debug=false
 nCount=1
 
@@ -70,20 +73,19 @@ if command -v shuf > /dev/null 2>&1; then
   fi
   shuf -i "${nMin}"-"${nMax}" -n "${nCount}" -r
 
+#######################################
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
-  
   # If nMax is less than 2^63-1, then we add one to correct distribution
-  if (( nMax < (2**63-1) )); then
+  if [ "${nMax}" -lt "${nMax263}" ]; then
     nMax=$(( nMax + 1 ))
   fi
-  
-  # Now we generate our output
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 
+#######################################
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
@@ -91,14 +93,16 @@ elif command -v perl > /dev/null 2>&1; then
     printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
   fi
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
-  
+
+#######################################  
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'python'"
   fi
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
-  
+
+#######################################  
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -106,6 +110,7 @@ elif command -v awk > /dev/null 2>&1; then
   fi
   awk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 
+#######################################
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
@@ -147,7 +152,7 @@ elif [ -n "${RANDOM}" ]; then
     fi
   done
 
-
+#######################################
 # Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
 elif [ -c /dev/urandom ]; then
   if [ "${debug}" = true ]; then
@@ -185,31 +190,92 @@ elif [ -c /dev/urandom ]; then
       nCount=$(( nCount - 1 ))
     fi
   done    
- 
+
+#######################################  
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
-# Let's try to make something using the date command
+# Let's try to make something up.  
+#
+# Originally this was based off PID + date, but was rewritten to be closer to the /dev/urandom method
 elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
-
-  # Make up a random number based on date and PID.  This is our random seed.
-  # Note: this is POSIX compliant 'date', if portability isn't a concern,
-  # you could use the GNUistic $(date '+%s%N') and maybe md5sum it for extra randomisation
-  nRand=$(printf "%s\n" "$$ + $(date '+%H + %M + %S')" | bc)
   
-  while [ $(( nCount -= 1 )) -ge 0 ]; do
-    # Feed our random seed through the modulus formula and capture it to a var
-    outRand=$(( nRand % (nMax - nMin) + nMin ))
-
-    # Print it out
-    printf "%s\n" "${outRand}"
-
-    # Adjust nRand by adding the last random number 
-    # we use fold to limit nRand's length - just in case.
-    nRand=$(printf "%s\n" "$(( nRand + outRand ))" | fold -w 10)
+  # First,let's figure out which hashing methods are available to us
+    if command -v md5sum > /dev/null 2>&1; then
+      crypt="md5sum" # Should cover most hosts
+    elif command -v digest > /dev/null 2>&1; then
+      crypt=$(digest -v -a md5) # Solaris hosts without md5sum
+    elif command -v csum > /devnull 2>&1; then
+      crypt=$(csum)  # Should cater for most AIX hosts
+    elif command -v cksum > /dev/null 2>&1; then
+      crypt=$(cksum) # Last chance catch-all attempt
+    else
+      printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
+      exit 1
+    fi
+  
+  # Let's generate some "entropy" by simply running through this list of commands
+  # And trying to remove as much whitespace as possible
+  {
+    ps -aux 2>/dev/null | tr -d " " | tr -d "\n"
+    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
+    top -n 1 2>/dev/null | tr -d " " | tr -d "\n"
+    date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
+    df -k 2>/dev/null | tr -d " " | tr -d "\n" 
+    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
+    netstat -a 2>/dev/null | tr -d " " | tr -d "\n"
+    date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
+    vmstat -i 2>/dev/null | tr -d " " | tr -d "\n"
+    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
+    vmstat -s 2>/dev/null | tr -d " " | tr -d "\n"
+    date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
+    iostat 2>/dev/null | tr -d " " | tr -d "\n"
+    printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
+    pstat -afipSsT 2>/dev/null | tr -d " " | tr -d "\n"
+  } >> /tmp/entropy
+  
+  logn=1
+  nBitlen=0
+  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
+    logn=$(( logn * 2 ))
+    nBitlen=$(( nBitlen + 1 ))
   done
 
+  # The lowest number of bytes needed to get at least n bits is the
+  # lowest multiple of 8 that is greater than or equal to n
+  nBytes=$(( (nBitlen + 7) / 8 ))
+  
+  # Don't let it drop below 2
+  #if [ "${nBytes}" -lt 2 ]; then
+  #  nBytes=2
+  #fi
+  
+  while [ "${nCount}" -gt 0 ]; do
+    nRand=$(od -N "${nBytes}" -A n -t uL < /tmp/entropy | tr -d " ")
+    #nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
+    nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
+
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+      printf "%s\n" "$(( nRandShift + nMin ))"
+
+	  # Seed some more data into the entropy file
+      {
+        # Rotate the entropy, get the first 16 chars and md5sum it to the bottom of the file
+        printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | "${crypt}" | tr -d " ")"
+        printf "%s" "$$" | ${crypt} | tr -d " " | tr -d "\n"
+        date '+%H%M%S' | ${crypt} | tr -d " " | tr -d "\n"
+      } >> /tmp/entropy
+	  
+	  # Now remove the leading nBytes of the entropy file
+      tail -c +"${nBytes}" /tmp/entropy | tr -d "\n" > /tmp/entropy2
+	  mv /tmp/entropy2 /tmp/entropy
+	  
+	  nCount=$(( nCount - 1 ))
+    fi
+  done
+  
+##############################################################################
 # Ultimate failure
 else
   printf "%s\n" "[ERROR] rand: I could not find a valid method with which to process your request."
