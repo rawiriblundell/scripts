@@ -84,15 +84,9 @@ Fn_hash() {
 
 # xor function modified from http://zurlinux.com/?p=712
 Fn_xor() {
-  while read -r line; do
-    i=0
-    # Strip out spaces to reduce whitespace bias
-    line=$(printf "%s" "${line// /}")
-    while [ "$i" -lt "${#line}" ]; do
-     ord=$(printf "%d" "'${line:$i:1}")
-     # shellcheck disable=SC2059
-     printf \\"$(printf '%03o' $((ord ^ 90)) )"
-     i=$(( i + 1 ))
+ while read -r line; do
+    for i in $(printf "%s" "${line// /}" | od -A n -t o1 -w1 -v); do
+      printf \\"$(printf '%03o' "$(( i ^ 90 ))" )"
     done
   done
 }
