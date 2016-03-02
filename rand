@@ -65,10 +65,29 @@ fi
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax nCount
 
+# Let's try and find a hashing method
+for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
+  if command -v "${cryptopt}" > /dev/null 2>&1; then
+    crypt="${cryptopt}"
+    if [ "${crypt}" = digest ]; then
+      crypt="digest -v -a md5"
+    fi
+    break
+  fi
+done
+
+# Line by line hashing function
+Fn_hash() {
+  while read -r line; do
+    printf "%s" "${line}" | "${crypt}"
+}
+
 # xor function modified from http://zurlinux.com/?p=712
 Fn_xor() {
   while read -r line; do
     i=0
+    # Strip out spaces to reduce whitespace bias
+    line=$(printf "%s" "${line// /}")
     while [ "$i" -lt "${#line}" ]; do
      ord=$(printf "%d" "'${line:$i:1}")
      # shellcheck disable=SC2059
@@ -99,7 +118,7 @@ elif command -v jot > /dev/null 2>&1; then
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 
 #######################################
-# Now we start going less-native and try perl.  Very likely to be there,   
+# Now we start going less-native and try perl.  Very likely to be there,
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -107,7 +126,7 @@ elif command -v perl > /dev/null 2>&1; then
   fi
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
 
-#######################################  
+#######################################
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -115,7 +134,7 @@ elif command -v python > /dev/null 2>&1; then
   fi
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
 
-#######################################  
+#######################################
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -202,9 +221,9 @@ elif [ -c /dev/urandom ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
-  done    
+  done
 
-#######################################  
+#######################################
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
@@ -213,29 +232,18 @@ elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
-  
-  # Let's try and find a hashing method
-  for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
-    if command -v "${cryptopt}" > /dev/null 2>&1; then
-      crypt="${cryptopt}"
-      if [ "${crypt}" = digest ]; then
-        crypt="digest -v -a md5"
-      fi
-      break
-    else
-      printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
-      exit 1
-    fi
-  done
-  
+
   # Let's generate some "entropy" by simply running through this list of commands
-  # And trying to remove as much whitespace as possible, then xor, then hash it
+  # Then pass each line through Fn_hash.  This is not secure entropy, 
+  # but it's quick and meets our needs.  
+  # May like to mix in a portion of /usr/share/dict/words as well...
+  # TO-DO: Make a call as to what to do with existing /tmp/entropy files - trust?  remove?  remix?  rotate?
   {
     ps -aux 2>/dev/null
     printf "%s" "$$"
     top -n 1 2>/dev/null
     date '+%H%M%S'
-    df -k 2>/dev/null 
+    df -k 2>/dev/null
     printf "%s" "$$"
     netstat -a 2>/dev/null
     date '+%H%M%S'
@@ -246,7 +254,7 @@ elif command -v date > /dev/null 2>&1; then
     iostat 2>/dev/null
     printf "%s" "$$"
     pstat -afipSsT 2>/dev/null
-  } | tr -d " " | tr -d "\n" | Fn_xor | "${crypt}" >> /tmp/entropy
+  } | Fn_hash > /tmp/entropy
 
   logn=1
   nBitlen=0
@@ -256,12 +264,12 @@ elif command -v date > /dev/null 2>&1; then
   done
 
   nBytes=$(( (nBitlen + 7) / 8 ))
-  
+
   # Don't let it drop below 2
   #if [ "${nBytes}" -lt 2 ]; then
   #  nBytes=2
   #fi
-  
+
   while [ "${nCount}" -gt 0 ]; do
     nRand=$(od -N "${nBytes}" -A n -t uL < /tmp/entropy | tr -d " ")
     #nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
@@ -270,24 +278,25 @@ elif command -v date > /dev/null 2>&1; then
     if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
 
-      # Now remove the leading nBytes of the entropy file, temporarily store
-      tail -c +"${nBytes}" /tmp/entropy | tr -d "\n" > /tmp/entropy2
+      # Create a temporary entropy file
+      cp  /tmp/entropy /tmp/entropy2
 
-      # Seed some more data into the entropy file
+      # Seed some more data into a temporary entropy file
       {
-        # Rotate the entropy, get the first 16 chars, xor and hash it to the bottom of the file
-        printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | Fn_xor | "${crypt}" | tr -d " ")"
-        printf "%s" "$$" | Fn_xor | ${crypt} | tr -d " " | tr -d "\n"
-        date '+%H%M%S' | Fn_xor | ${crypt} | tr -d " " | tr -d "\n"
+        # Rotate the entropy, get the first 16 chars, xor and hash it to the bottom of the temp file
+        printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | "${crypt}")"
+        printf "%s" "$$" | Fn_xor
+        date '+%H%M%S' | Fn_xor
       } >> /tmp/entropy2
-	  
-      # Move the tempstore back into place
-      mv /tmp/entropy2 /tmp/entropy
+
+      # Now remove the leading nBytes of the temporary entropy file
+      # Overwrite back into /tmp/entropy
+      tail -c +"${nBytes}" /tmp/entropy2 | tr -d "\n" > /tmp/entropy
 
       nCount=$(( nCount - 1 ))
     fi
   done
-  
+
 ##############################################################################
 # Ultimate failure
 else
