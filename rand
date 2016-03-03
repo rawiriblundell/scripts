@@ -65,6 +65,16 @@ fi
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax nCount
 
+# Function to determine required bitlength
+Fn_bitlen() {
+  logn=1
+  nBitlen=0
+  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
+    logn=$(( logn * 2 ))
+    nBitlen=$(( nBitlen + 1 ))
+  done
+}
+
 # Function to quickly rotate ASCII characters by 90 places
 # emulates Fn_xor in a lazy way but is infinitely faster
 Fn_chrotate() {
@@ -140,14 +150,7 @@ elif [ -n "${RANDOM}" ]; then
   fi
 
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
-  logn=1
-  nBitlen=0
-  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
-    # We increase by a power of two each time
-    logn=$(( logn * 2 ))
-    # And count how many times it takes until the while loop exits
-    nBitlen=$(( nBitlen + 1 ))
-  done
+  Fn_bitlen
 
   # Start a loop based on nCount.  I thought of other ways, but this works easier
   # and can be made more portable if testing proves the need to do so
@@ -169,7 +172,7 @@ elif [ -n "${RANDOM}" ]; then
     # then we can use it and iterate the while loop
     # We add a test for greater than 0, as we want to print positive integers
     # This has a performance hit, but is for consistency with the other methods used
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
@@ -189,12 +192,8 @@ elif [ -c /dev/urandom ]; then
   #  nMax=$((2**56-1))
   #fi
 
-  logn=1
-  nBitlen=0
-  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
-    logn=$(( logn * 2 ))
-    nBitlen=$(( nBitlen + 1 ))
-  done
+  # We need to know the number of bits required to represent nMax (i.e. bitlength)
+  Fn_bitlen
 
   # The lowest number of bytes needed to get at least n bits is the
   # lowest multiple of 8 that is greater than or equal to n
@@ -208,7 +207,7 @@ elif [ -c /dev/urandom ]; then
     # Now we bitshift to the right
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
@@ -224,8 +223,7 @@ elif command -v date > /dev/null 2>&1; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
   
-  # Let's try and find a hashing method, unused for now
-  # This may be useful for stirring the entropy file though.
+  # Let's try and find a hashing method, we use this sparingly for now
   for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
     if command -v "${cryptopt}" > /dev/null 2>&1; then
       crypt="${cryptopt}"
@@ -239,66 +237,69 @@ elif command -v date > /dev/null 2>&1; then
     fi
   done
   
-  # Let's generate some "entropy" by simply running through this list of commands
+  # We need some "entropy", so let's first check for an existing entropy file from
+  # a previous invocation.  If found, we want to rotate its characters
+  if [ -f /tmp/entropy ]; then
+    Fn_chrotate < /tmp/entropy > /tmp/entropy2
+    mv /tmp/entropy2 /tmp/entropy
+  
+  # Otherwise, let's generate some "entropy" by simply running through this list of commands
   # And trying to remove as much whitespace as possible, then do a fast 'xor'
-  {
-    ps -aux 2>/dev/null
-    printf "%s" "$$"
-    top -n 1 2>/dev/null
-    date '+%H%M%S'
-    df -k 2>/dev/null 
-    printf "%s" "$$"
-    netstat -a 2>/dev/null
-    date '+%H%M%S'
-    vmstat -i 2>/dev/null
-    printf "%s" "$$"
-    vmstat -s 2>/dev/null
-    date '+%H%M%S'
-    iostat 2>/dev/null
-    printf "%s" "$$"
-    pstat -afipSsT 2>/dev/null
-  } | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
+  else
+    {
+      ps -aux 2>/dev/null
+      printf "%s" "$$"
+      top -n 1 2>/dev/null
+      date '+%H%M%S'
+      df -k 2>/dev/null 
+      printf "%s" "$$"
+      netstat -a 2>/dev/null
+      date '+%H%M%S'
+      vmstat -i 2>/dev/null
+      printf "%s" "$$"
+      vmstat -s 2>/dev/null
+      date '+%H%M%S'
+      iostat 2>/dev/null
+      printf "%s" "$$"
+      pstat -afipSsT 2>/dev/null
+    } | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
+  fi
+  
+  # We need to know the number of bits required to represent nMax (i.e. bitlength)
+  Fn_bitlen
 
-  logn=1
-  nBitlen=0
-  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
-    logn=$(( logn * 2 ))
-    nBitlen=$(( nBitlen + 1 ))
-  done
-
+  # The lowest number of bytes needed to get at least n bits is the
+  # lowest multiple of 8 that is greater than or equal to n
   nBytes=$(( (nBitlen + 7) / 8 ))
-  
-  # Don't let it drop below 2
-  #if [ "${nBytes}" -lt 2 ]; then
-  #  nBytes=2
-  #fi
-  
+
   while [ "${nCount}" -gt 0 ]; do
-    nRand=$(od -N "${nBytes}" -A n -t uL < /tmp/entropy | tr -d " ")
-    #nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
+
+    # Get a string of bytes from /tmp/entropy using od
+    nRand=$(od -N "${nBytes}" -A n -t uL /tmp/entropy | tr -d " ")
+
+    # Now we bitshift to the right
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
-
-      # Now remove the leading nBytes of the entropy file, temporarily store
-      tail -c +"${nBytes}" /tmp/entropy | tr -d "\n" > /tmp/entropy2
-
-      # Seed some more data into the entropy file
-      {
-        # Rotate the entropy, get the first 64 chars, xor it to the bottom of the file
-        printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor | tr -d " ")"
-        printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n"
-        date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
-      } >> /tmp/entropy2
-	  
-      # Move the tempstore back into place
-      mv /tmp/entropy2 /tmp/entropy
-	  
       nCount=$(( nCount - 1 ))
     fi
-  done
-  
+
+    # Now remove the leading 32 Bytes of the entropy file, temporarily store
+    tail -c +33 /tmp/entropy | tr -d "\n" > /tmp/entropy2
+
+    {
+      # Seed some more data into the temporary entropy file
+      printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n" | "${crypt}"
+      # Rotate the entropy, get the first 64 chars, xor it to the bottom of the temp file
+      printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor)"
+      date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
+    } >> /tmp/entropy2
+
+    # Move the tempstore back into place
+    mv /tmp/entropy2 /tmp/entropy
+  done   
+
 ##############################################################################
 # Ultimate failure
 else
