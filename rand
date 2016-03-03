@@ -65,27 +65,21 @@ fi
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax nCount
 
-# Let's try and find a hashing method
-for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
-  if command -v "${cryptopt}" > /dev/null 2>&1; then
-    crypt="${cryptopt}"
-    if [ "${crypt}" = digest ]; then
-      crypt="digest -v -a md5"
-    fi
-    break
-  fi
-done
-
-# Line by line hashing function
-Fn_hash() {
-  while read -r line; do
-    printf "%s" "${line}" | "${crypt}"
+# Function to quickly rotate ASCII characters by 90 places
+# emulates Fn_xor in a lazy way but is infinitely faster
+Fn_chrotate() {
+  # shellcheck disable=SC2020
+  tr ' !"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~' 'z{|}~ !"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz'
 }
 
-# xor function modified from http://zurlinux.com/?p=712
+# xor function derived from http://zurlinux.com/?p=712
 Fn_xor() {
- while read -r line; do
-    for i in $(printf "%s" "${line// /}" | od -A n -t o1 -w1 -v); do
+  while read -r line; do
+    # Start by removing whitespace to reduce character bias
+    # pipe to 'od' which converts each character to one octal per line
+    for i in $(printf "%s" "${line}" | tr -d " " | od -A n -t o1 -w1 -v); do
+      # for each octal, run an xor and then print it
+      # shellcheck disable=SC2059
       printf \\"$(printf '%03o' "$(( i ^ 90 ))" )"
     done
   done
@@ -112,7 +106,7 @@ elif command -v jot > /dev/null 2>&1; then
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 
 #######################################
-# Now we start going less-native and try perl.  Very likely to be there,
+# Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -120,7 +114,7 @@ elif command -v perl > /dev/null 2>&1; then
   fi
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
 
-#######################################
+#######################################  
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -128,7 +122,7 @@ elif command -v python > /dev/null 2>&1; then
   fi
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
 
-#######################################
+#######################################  
 # No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
 elif command -v awk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
@@ -139,6 +133,7 @@ elif command -v awk > /dev/null 2>&1; then
 #######################################
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
+# shellcheck disable=SC2039
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
@@ -158,9 +153,11 @@ elif [ -n "${RANDOM}" ]; then
   # and can be made more portable if testing proves the need to do so
   while [ "${nCount}" -gt 0 ]; do
     rndBitlen=15
+    # shellcheck disable=SC2039
     rnd=$RANDOM # Capture one output sample of RANDOM
     while [ "${rndBitlen}" -lt "${nBitlen}" ]; do
       # Bitshift RANDOM to the left to stack it i.e. 15 int -> 30 int -> 45 int etc
+      # shellcheck disable=SC2039
       rnd=$(( rnd<<15|RANDOM ))
       # Keep stacking until the while loop exits
       rndBitlen=$(( rndBitlen + 15 ))
@@ -172,7 +169,7 @@ elif [ -n "${RANDOM}" ]; then
     # then we can use it and iterate the while loop
     # We add a test for greater than 0, as we want to print positive integers
     # This has a performance hit, but is for consistency with the other methods used
-    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
@@ -211,13 +208,13 @@ elif [ -c /dev/urandom ]; then
     # Now we bitshift to the right
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
-  done
+  done    
 
-#######################################
+#######################################  
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
@@ -226,18 +223,30 @@ elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
-
+  
+  # Let's try and find a hashing method, unused for now
+  # This may be useful for stirring the entropy file though.
+  for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
+    if command -v "${cryptopt}" > /dev/null 2>&1; then
+      crypt="${cryptopt}"
+      if [ "${crypt}" = digest ]; then
+        crypt="digest -v -a md5"
+      fi
+      break
+    else
+      printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
+      exit 1
+    fi
+  done
+  
   # Let's generate some "entropy" by simply running through this list of commands
-  # Then pass each line through Fn_hash.  This is not secure entropy, 
-  # but it's quick and meets our needs.  
-  # May like to mix in a portion of /usr/share/dict/words as well...
-  # TO-DO: Make a call as to what to do with existing /tmp/entropy files - trust?  remove?  remix?  rotate?
+  # And trying to remove as much whitespace as possible, then do a fast 'xor'
   {
     ps -aux 2>/dev/null
     printf "%s" "$$"
     top -n 1 2>/dev/null
     date '+%H%M%S'
-    df -k 2>/dev/null
+    df -k 2>/dev/null 
     printf "%s" "$$"
     netstat -a 2>/dev/null
     date '+%H%M%S'
@@ -248,7 +257,7 @@ elif command -v date > /dev/null 2>&1; then
     iostat 2>/dev/null
     printf "%s" "$$"
     pstat -afipSsT 2>/dev/null
-  } | Fn_hash > /tmp/entropy
+  } | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
 
   logn=1
   nBitlen=0
@@ -258,39 +267,38 @@ elif command -v date > /dev/null 2>&1; then
   done
 
   nBytes=$(( (nBitlen + 7) / 8 ))
-
+  
   # Don't let it drop below 2
   #if [ "${nBytes}" -lt 2 ]; then
   #  nBytes=2
   #fi
-
+  
   while [ "${nCount}" -gt 0 ]; do
     nRand=$(od -N "${nBytes}" -A n -t uL < /tmp/entropy | tr -d " ")
     #nRand=$(printf "%s\n" "${nRand}" | sed -e 's/^0/4/g')
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
+    if [ $((nRandShift + nMin)) -lt "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
 
-      # Create a temporary entropy file
-      cp  /tmp/entropy /tmp/entropy2
+      # Now remove the leading nBytes of the entropy file, temporarily store
+      tail -c +"${nBytes}" /tmp/entropy | tr -d "\n" > /tmp/entropy2
 
-      # Seed some more data into a temporary entropy file
+      # Seed some more data into the entropy file
       {
-        # Rotate the entropy, get the first 16 chars, xor and hash it to the bottom of the temp file
-        printf "%s" "$(fold -b -w 16 /tmp/entropy | head -1 | "${crypt}")"
-        printf "%s" "$$" | Fn_xor
-        date '+%H%M%S' | Fn_xor
+        # Rotate the entropy, get the first 64 chars, xor it to the bottom of the file
+        printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor | tr -d " ")"
+        printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n"
+        date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
       } >> /tmp/entropy2
-
-      # Now remove the leading nBytes of the temporary entropy file
-      # Overwrite back into /tmp/entropy
-      tail -c +"${nBytes}" /tmp/entropy2 | tr -d "\n" > /tmp/entropy
-
+	  
+      # Move the tempstore back into place
+      mv /tmp/entropy2 /tmp/entropy
+	  
       nCount=$(( nCount - 1 ))
     fi
   done
-
+  
 ##############################################################################
 # Ultimate failure
 else
