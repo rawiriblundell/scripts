@@ -1,7 +1,7 @@
 #!/bin/bash
 # Purpose:    This script attempts to generate random integers through any means necessary
 # Author:     Rawiri Blundell
-# Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability.
+# Copyright:  (c) 2016 - Beerware As-Is.  No warranty or liability, but some attribution would be nice.
 # Date:       20160222
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
 #              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
