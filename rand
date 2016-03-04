@@ -189,7 +189,7 @@ elif [ -c /dev/urandom ]; then
 
   # If performance is more important to you than functionality, uncomment this
   # This will have the effect of limiting this mode to 56 bit integers
-  # Which makes '&& (nRandShift + nMin) > 0' effectively redundant.
+  # Which makes '&& [ $((nRandShift + nMin)) -gt 0 ]' effectively redundant.
   #if (( nMax > (2**56-1) )); then
   #  nMax=$((2**56-1))
   #fi
