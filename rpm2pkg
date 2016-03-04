@@ -64,9 +64,10 @@ while getopts ":a:b:hip:r:u" Flags; do
     :)  printf "%s\n" "[ERROR]: Option '-${OPTARG}' requires an argument." >&2
         exit 1;;
   esac
-  # Shift optind, allowing us to get the rpm filename without needing getopts
-  shift $(( OPTIND - 1 ))
 done
+
+# Shift optind, allowing us to get the rpm filename without needing getopts
+shift "$(( OPTIND - 1 ))"
 
 ###############################################################################
 # Get the location of our rpm
