@@ -217,7 +217,10 @@ elif [ -c /dev/urandom ]; then
 # If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
-# Originally this was based off PID + date, but was rewritten to be closer to the /dev/urandom method
+# Originally this was based off PID + date, but was rewritten to generate and churn a sufficient
+# amount of entropy.  Applying /dev/urandom processing gave a very skewed distribution
+# and so I decided to limit the number of bytes read and simply use a modulo formula
+# The point being that if we ever got to this point, it's enough to generate something.
 elif command -v date > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
@@ -265,38 +268,31 @@ elif command -v date > /dev/null 2>&1; then
     } | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
   fi
   
-  # We need to know the number of bits required to represent nMax (i.e. bitlength)
-  Fn_bitlen
-
-  # The lowest number of bytes needed to get at least n bits is the
-  # lowest multiple of 8 that is greater than or equal to n
-  nBytes=$(( (nBitlen + 7) / 8 ))
-
   while [ "${nCount}" -gt 0 ]; do
 
-    # Get a string of bytes from /tmp/entropy using od
-    nRand=$(od -N "${nBytes}" -A n -t uL /tmp/entropy | tr -d " ")
+    # Get a string of 4 bytes from /tmp/entropy using od
+    # format it as an unsigned integer between 0 and 2^32-1
+    nRand=$(od -N 4 -A n -t uL /tmp/entropy | tr -d " ")
 
-    # Now we bitshift to the right
-    nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
+    # Pass nRand through a standard modulo
+    printf "%s\n" "$(( nRand % (nMax + 1 - nMin) + nMin ))"
 
-    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
-      printf "%s\n" "$(( nRandShift + nMin ))"
-      nCount=$(( nCount - 1 ))
-    fi
+    # Decrement the counter
+    nCount=$(( nCount - 1 ))
 
-    # Now remove the leading 32 Bytes of the entropy file, temporarily store
+    # Now we have to churn the entropy file.  We remove the leading 32 Bytes 
+    # of the entropy file, and temporarily store the result
     tail -c +33 /tmp/entropy | tr -d "\n" > /tmp/entropy2
 
     {
-      # Seed some more data into the temporary entropy file
+      # Seed some more data into the temporary entropy file, here we hash the PID
       printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n" | "${crypt}"
       # Rotate the entropy, get the first 64 chars, xor it to the bottom of the temp file
       printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor)"
       date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
     } >> /tmp/entropy2
 
-    # Move the tempstore back into place
+    # Move the temporary file into place
     mv /tmp/entropy2 /tmp/entropy
   done   
 
