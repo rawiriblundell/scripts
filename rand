@@ -186,7 +186,22 @@ elif [ -c /dev/urandom ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
   fi
+  
+  # Check we have the required binaries
+  ErrCount=0
+  for Prog in od tr; do
+    if ! command -v "${Prog}" >/dev/null 2>&1; then
+      printf "%s\n" "[ERROR] rand: '${Prog}' is required but was not found."
+      ErrCount=$(( ErrCount + 1 ))
+    fi
+  done
 
+  # If any packages are missing, then ErrCount's going
+  # to be greater than 0, in which case, exit.
+  if [ "${ErrCount}" -gt 0 ]; then
+    exit 1
+  fi
+  
   # If performance is more important to you than functionality, uncomment this
   # This will have the effect of limiting this mode to 56 bit integers
   # Which makes '&& [ $((nRandShift + nMin)) -gt 0 ]' effectively redundant.
@@ -228,6 +243,21 @@ elif command -v date > /dev/null 2>&1; then
     printf "%s\n" "[DEBUG] rand: Method used is 'date'"
   fi
   
+  # Check we have the required binaries
+  ErrCount=0
+  for Prog in od tr tail head; do
+    if ! command -v "${Prog}" >/dev/null 2>&1; then
+      printf "%s\n" "[ERROR] rand: '${Prog}' is required but was not found."
+      ErrCount=$(( ErrCount + 1 ))
+    fi
+  done
+
+  # If any packages are missing, then ErrCount's going
+  # to be greater than 0, in which case, exit.
+  if [ "${ErrCount}" -gt 0 ]; then
+    exit 1
+  fi
+
   # Let's try and find a hashing method, we use this sparingly for now
   for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
     if command -v "${cryptopt}" > /dev/null 2>&1; then
