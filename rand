@@ -107,6 +107,7 @@ if command -v shuf > /dev/null 2>&1; then
 
 #######################################
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
+# TODO: Test if BSD 'jot' has the same 32767 limit as athena-jot, and if so, fix it
 elif command -v jot > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
