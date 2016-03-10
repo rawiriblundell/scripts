@@ -116,12 +116,17 @@ EOF
 
 # Setup directory contents
 cd /var/www/html &>/dev/null || exit 1
-wget http://shellcheck.net/{down.png,favicon.ico,index.html,jquery.js,shellcheck.js,spinner.gif,sunburst.css}
-
-# Grab external items
-wget https://cdn.rawgit.com/google/code-prettify/master/loader/prettify.css
-wget https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js
+wget http://shellcheck.net/{favicon.ico,index.html,shellcheck.js,shellcheck.css}
 wget https://assets-cdn.github.com/images/modules/logos_page/GitHub-Logo.png
+wget https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/images/ui-icons_222222_256x240.png
+
+mkdir -p /var/www/html/libace
+wget http://shellcheck.net/libace/{ace.js,mode-sh.js,worker-shellcheck.js} /var/www/html/libace/
+
+mkdir -p /var/www/html/jquery/2.2.0/
+mkdir -p /var/www/html/jqueryui/1.11.4/
+wget https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js /var/www/html/jqueryui/1.11.4/
+wget https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js /var/www/html/jquery/2.2.0/
 
 # Correct character encoding issue in shellcheck.js
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
