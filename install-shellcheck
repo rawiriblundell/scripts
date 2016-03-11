@@ -121,12 +121,12 @@ wget https://assets-cdn.github.com/images/modules/logos_page/GitHub-Logo.png
 wget https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/images/ui-icons_222222_256x240.png
 
 mkdir -p /var/www/html/libace
-wget http://shellcheck.net/libace/{ace.js,mode-sh.js,worker-shellcheck.js} /var/www/html/libace/
+wget -P /var/www/html/libace/ http://shellcheck.net/libace/{ace.js,mode-sh.js,worker-shellcheck.js} 
 
 mkdir -p /var/www/html/jquery/2.2.0/
 mkdir -p /var/www/html/jqueryui/1.11.4/
-wget https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js /var/www/html/jqueryui/1.11.4/
-wget https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js /var/www/html/jquery/2.2.0/
+wget -P /var/www/html/jqueryui/1.11.4/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js 
+wget -P /var/www/html/jquery/2.2.0/ https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js 
 
 # Correct character encoding issue in shellcheck.js
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
