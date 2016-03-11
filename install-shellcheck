@@ -5,32 +5,13 @@
 #          Further tweaking, locking down, config etc is on you.
 # Author:  Rawiri Blundell, 201508
 
-# TO-DO:   Rewrite index.html to point about.html to shellcheck.net/about.html
-
 ################################################################################
 # License information
 # This script is released under the MIT license
 
 # Please see: https://github.com/koalaman/shellcheck/issues/423
 
-# Shellcheck's webui is made up of the following files:
-# down.png - unknown license
-# favicon.ico - unknown license
-# header.png - unknown licencse
-# index.html - copyright waived
-# jquery.js - dual MIT/GPL
-# prettify.js (https://github.com/google/code-prettify) - Apache 2.0
-# shellcheck.js - copyright waived
-# shellcheck.php - copyright waived
-# shellcheckwrapper.sh - copyright waived
-# spinner.gif - unknown license
-# sunburst.css (https://github.com/google/code-prettify) - Apache 2.0
-
-# down.png and spinner.gif appear to be ad-supported to create and then free to use (cssbuttongenerator.com)
-# I'm assuming the other images are copyright waived
-# If any of this is an issue, simply use your own images.  Easy!
 ################################################################################
-
 # This was created and tested on Debian 8.1, RHEL/CentOS testing is TBD
 
 # Check that we're root
@@ -118,15 +99,20 @@ EOF
 cd /var/www/html &>/dev/null || exit 1
 wget http://shellcheck.net/{favicon.ico,index.html,shellcheck.js,shellcheck.css}
 wget https://assets-cdn.github.com/images/modules/logos_page/GitHub-Logo.png
-wget https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/images/ui-icons_222222_256x240.png
 
 mkdir -p /var/www/html/libace
 wget -P /var/www/html/libace/ http://shellcheck.net/libace/{ace.js,mode-sh.js,worker-shellcheck.js} 
 
 mkdir -p /var/www/html/jquery/2.2.0/
-mkdir -p /var/www/html/jqueryui/1.11.4/
-wget -P /var/www/html/jqueryui/1.11.4/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js 
-wget -P /var/www/html/jquery/2.2.0/ https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js 
+wget -P /var/www/html/jquery/2.2.0/ https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js
+
+mkdir -p /var/www/html/jqueryui/1.11.4/themes/smoothness/images/
+wget -P /var/www/html/jqueryui/1.11.4/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js
+wget -P /var/www/html/jqueryui/1.11.4/themes/smoothness/images/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/images/ui-icons_222222_256x240.png
+
+# Correct where index.html points to its resources
+sed -i 's|https://ajax.googleapis.com/ajax/libs/||' index.html
+sed -i 's|https://assets-cdn.github.com/images/modules/logos_page/||' index.html
 
 # Correct character encoding issue in shellcheck.js
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
