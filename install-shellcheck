@@ -108,6 +108,7 @@ wget -P /var/www/html/jquery/2.2.0/ https://ajax.googleapis.com/ajax/libs/jquery
 
 mkdir -p /var/www/html/jqueryui/1.11.4/themes/smoothness/images/
 wget -P /var/www/html/jqueryui/1.11.4/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/jquery-ui.min.js
+wget -P /var/www/html/jqueryui/1.11.4/themes/smoothness/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/jquery-ui.css
 wget -P /var/www/html/jqueryui/1.11.4/themes/smoothness/images/ https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.4/themes/smoothness/images/ui-icons_222222_256x240.png
 
 # Correct where index.html points to its resources
