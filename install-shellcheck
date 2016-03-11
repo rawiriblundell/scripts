@@ -133,6 +133,8 @@ sed -i 's|https://assets-cdn.github.com/images/modules/logos_page/||' index.html
 # Correct character encoding issue in shellcheck.js
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
 
+# Correct character encoding issue in index.html
+sed -i 's|          <img src="GitHub-Logo.png" style="height: 1.5ex" alt="GitHub" /> âž¯|          <img src="GitHub-Logo.png" style="height: 1.5ex" alt="GitHub" />' index.html
 # Ensure correct perms
 find /var/www/html/ -type f -exec chmod 644 {} \;
 chmod +x /var/www/html/shellcheck.sh
