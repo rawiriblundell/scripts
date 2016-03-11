@@ -144,7 +144,7 @@ if(is_resource($process)) {
 EOF
 
 # Ensure correct perms
-chmod 644 *
+find /var/www/html/ -type f -exec chmod 644 {} \;
 
 # Return from whence we came
 cd - &>/dev/null || exit 1
