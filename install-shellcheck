@@ -32,6 +32,10 @@ HostName=$(hostname -f)
 printf "%s\n" "Installing dependencies, please wait..."
 if command -v apt-get &>/dev/null; then
   apt-get -y install nginx php5 php5-fpm cabal-install
+  
+  # And now this very naughty way of installing node.js
+  wget -qO- https://deb.nodesource.com/setup_5.x | bash -
+  
   # shellcheck in the apt repos is old, so we install a more recent version using cabal
   # Update cabal's package list
   cabal update
@@ -49,6 +53,9 @@ elif command -v yum &>/dev/null; then
   # May need epel
   yum install gmp-devel
   ln -s /usr/lib64/libgmp.so.3  /usr/lib64/libgmp.so.10
+  
+  # And now this very naughty way of installing node.js
+  wget -qO- https://rpm.nodesource.com/setup_5.x | bash -
 
   # From https://www.haskell.org/platform/linux.html#linux-generic
   wget https://haskell.org/platform/download/7.10.2/haskell-platform-7.10.2-a-unknown-linux-deb7.tar.gz
