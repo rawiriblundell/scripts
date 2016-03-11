@@ -11,6 +11,10 @@
 
 # Please see: https://github.com/koalaman/shellcheck/issues/423
 
+# Note:  Vidar Holen appears to be working towards providing this himself from
+# https://github.com/koalaman/shellcheck.net
+# You may choose to use that instead.  I won't be offended.
+
 ################################################################################
 # This was created and tested on Debian 8.1, RHEL/CentOS testing is TBD
 
@@ -99,6 +103,10 @@ EOF
 cd /var/www/html &>/dev/null || exit 1
 wget http://shellcheck.net/{favicon.ico,index.html,shellcheck.js,shellcheck.css}
 wget https://assets-cdn.github.com/images/modules/logos_page/GitHub-Logo.png
+# Uncomment for latest
+#wget https://github.com/koalaman/shellcheck.net/raw/master/{shellcheck.css,shellcheck.js,shellcheck.php,shellcheck.sh}
+# Comment out for latest
+wget https://github.com/koalaman/shellcheck.net/raw/master/{shellcheck.php,shellcheck.sh}
 
 mkdir -p /var/www/html/libace
 wget -P /var/www/html/libace/ http://shellcheck.net/libace/{ace.js,mode-sh.js,worker-shellcheck.js} 
@@ -118,48 +126,12 @@ sed -i 's|https://assets-cdn.github.com/images/modules/logos_page/||' index.html
 # Correct character encoding issue in shellcheck.js
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
 
-# Create shellcheck.php
-# EOF quoted to force this heredoc to be literal
-cat << "EOF" > shellcheck.php
-<?php                                                                                   
-header('Content-type: application/json; charset=UTF-8');                                
-
-$fds = array(                                                                           
-    0 => array("pipe", "r"),                                                            
-    1 => array("pipe", "w"),                                                            
-);                                                                                      
-$cwd = '/tmp';                                                                          
-$env = array();                                                                         
-
-$process = proc_open("exec /opt/shellcheck/bin/shellcheckwrapper.sh", $fds, $pipes, $cwd, $env);                   
-if(is_resource($process)) {                                                             
-  fwrite($pipes[0], $_POST["script"]);                                                  
-  fclose($pipes[0]);                                                                    
-  echo stream_get_contents($pipes[1]);                                                  
-  fclose($pipes[1]);                                                                    
-  proc_close($process);                                                                 
-} else {                                                                                
-  echo "[{ 'line': 1, 'column': 1, 'level': 'error', 'message': 'Oops, internal server error unrelated to your script! Sorry!'}]";                                                  
-}                                                                                       
-?>
-EOF
-
 # Ensure correct perms
 find /var/www/html/ -type f -exec chmod 644 {} \;
+chmod +x /var/www/html/shellcheck.sh
 
 # Return from whence we came
 cd - &>/dev/null || exit 1
-
-# Create shellcheckwrapper.sh
-mkdir -p /opt/shellcheck/bin
-cat << "EOF" > /opt/shellcheck/bin/shellcheckwrapper.sh
-#!/bin/dash
-export LC_CTYPE=en_US.utf8
-ulimit -v 50000
-ulimit -t 3
-exec shellcheck -f json -e 2148 -
-EOF
-chmod +x /opt/shellcheck/bin/shellcheckwrapper.sh
 
 # Restart services
 if command -v systemctl &>/dev/null; then
