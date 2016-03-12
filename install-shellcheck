@@ -28,6 +28,15 @@ fi
 WrkPrcs=$(lscpu | grep "^CPU(s)" | awk '{print $2}')
 HostName=$(hostname -f)
 
+################################################################################
+#
+# ****** Ensure we have the required locale installed - THIS IS CRUCIAL! ******
+#
+localedef -i en_US -f UTF-8 en_US.UTF-8
+#
+#
+################################################################################
+
 # First we blindly install our dependencies
 printf "%s\n" "Installing dependencies, please wait..."
 if command -v apt-get &>/dev/null; then
@@ -66,8 +75,7 @@ elif command -v yum &>/dev/null; then
 
 fi
 
-# Ensure we have the required locale installed
-localedef -i en_US -f UTF-8 en_US.UTF-8
+
 
 # Setup php.  We disable cgi.fix_pathinfo for security reasons
 sed -i -e 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' /etc/php5/fpm/php.ini
