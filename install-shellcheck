@@ -66,6 +66,9 @@ elif command -v yum &>/dev/null; then
 
 fi
 
+# Ensure we have the required locale installed
+localedef -i en_US -f UTF-8 en_US.UTF-8
+
 # Setup php.  We disable cgi.fix_pathinfo for security reasons
 sed -i -e 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/' /etc/php5/fpm/php.ini
 
