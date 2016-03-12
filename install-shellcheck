@@ -45,7 +45,7 @@ if command -v apt-get &>/dev/null; then
   # And now this very naughty way of installing node.js
   wget -qO- https://deb.nodesource.com/setup_5.x | bash -
   
-  # shellcheck in the apt repos is old, so we install a more recent version using cabal
+  # Shellcheck in the apt repos is old, so we install a more recent version using cabal
   # Update cabal's package list
   cabal update
   # Cursory self-update of the cabal utils
@@ -143,7 +143,8 @@ sed -i 's|https://assets-cdn.github.com/images/modules/logos_page/||' index.html
 sed -i 's/.*padding(c.column-1).*/      output += paddy(formatLineNumber("") + padding(c.column-1)) + "^--" + pod(c.level + "c", c.code, c.message) + "\\n";/' shellcheck.js
 
 # Correct character encoding issue in index.html
-sed -i 's|          <img src="GitHub-Logo.png" style="height: 1.5ex" alt="GitHub" /> âž¯|          <img src="GitHub-Logo.png" style="height: 1.5ex" alt="GitHub" /> =>' index.html
+sed -i 's|.*"GitHub-Logo.png".*|          <img src="GitHub-Logo.png" style="height: 1.5ex" alt="GitHub" /> =>|' index.html
+
 # Ensure correct perms
 find /var/www/html/ -type f -exec chmod 644 {} \;
 chmod +x /var/www/html/shellcheck.sh
@@ -151,18 +152,19 @@ chmod +x /var/www/html/shellcheck.sh
 # Return from whence we came
 cd - &>/dev/null || exit 1
 
-# Restart services
+# Restart services, notify user and exit
 if command -v systemctl &>/dev/null; then
   systemctl restart nginx 
   systemctl restart php5-fpm
+  printf "%s\n" "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
+  exit 0
 elif command -v service &>/dev/null; then
   service nginx restart
   service php5-fpm restart
+  printf "%s\n" "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
+  exit 0
 else
   printf "%s\n" "ERROR: Unable to find 'systemctl' or 'service' in my path." \
     "Please restart the nginx and php5-fpm services manually."
   exit 1
 fi
-
-# Notify user
-printf "%s\n" "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
