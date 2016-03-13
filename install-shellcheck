@@ -40,7 +40,7 @@ localedef -i en_US -f UTF-8 en_US.UTF-8
 # First we blindly install our dependencies
 printf "%s\n" "Installing dependencies, please wait..."
 if command -v apt-get &>/dev/null; then
-  apt-get -y install nginx php5 php5-fpm cabal-install
+  apt-get -y install nginx php5 php5-fpm cabal-install zlib1g-dev
   
   # And now this very naughty way of installing node.js
   wget -qO- https://deb.nodesource.com/setup_5.x | bash -
