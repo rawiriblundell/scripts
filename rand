@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Purpose:     This script attempts to generate random integers through any means necessary
 # Author:      Rawiri Blundell
 # Copyright:   (c) 2016 - Beerware As-Is.  
@@ -102,8 +102,20 @@ if command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
   fi
-  shuf -i "${nMin}"-"${nMax}" -n "${nCount}" -r
-
+  # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the '-r' option
+  # Once again, Solaris proves to be the bane of my scripting existence.  '-r' was introduced in v8.22 so that's our test
+  if shuf --version | head -1  | grep "8.[2-9][2-9]" > /dev/null 2>&1; then
+    shuf -n "${nCount}" -r -i "${nMin}"-"${nMax}" 
+  # Otherwise we assume an older version and loop it.  This has a performance penalty
+  # This is not so much to punish Solaris 11 users, but more to cater for any old instances of 'shuf'
+  else
+    while [ "${nCount}" -gt 0 ]; do
+      shuf -n 1 -i "${nMin}"-"${nMax}"
+      # Decrement the counter
+      nCount=$(( nCount - 1 ))
+    done
+  fi
+  
 #######################################
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is theoretically limited to 2^32-1 by the arc4random algorithm
@@ -143,7 +155,6 @@ elif command -v awk > /dev/null 2>&1; then
 #######################################
 # No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
-# shellcheck disable=SC2039
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
@@ -156,11 +167,9 @@ elif [ -n "${RANDOM}" ]; then
   # and can be made more portable if testing proves the need to do so
   while [ "${nCount}" -gt 0 ]; do
     rndBitlen=15
-    # shellcheck disable=SC2039
     rnd=$RANDOM # Capture one output sample of RANDOM
     while [ "${rndBitlen}" -lt "${nBitlen}" ]; do
       # Bitshift RANDOM to the left to stack it i.e. 15 int -> 30 int -> 45 int etc
-      # shellcheck disable=SC2039
       rnd=$(( rnd<<15|RANDOM ))
       # Keep stacking until the while loop exits
       rndBitlen=$(( rndBitlen + 15 ))
