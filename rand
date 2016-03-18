@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Purpose:     This script attempts to generate random integers through any means necessary
 # Author:      Rawiri Blundell
 # Copyright:   (c) 2016 - Beerware As-Is.  
@@ -145,15 +145,15 @@ elif command -v python > /dev/null 2>&1; then
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
 
 #######################################  
-# No perl or python?  Surely awk/oawk/nawk/gawk is hanging around?
-elif command -v awk > /dev/null 2>&1; then
+# No perl or python?  Let's try 'gawk'
+elif command -v gawk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'awk'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
   fi
-  awk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 
 #######################################
-# No perl, python or awk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
+# No perl, python or gawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
@@ -238,7 +238,7 @@ elif [ -c /dev/urandom ]; then
   done    
 
 #######################################  
-# If there's no shuf, jot, perl, python, awk, $RANDOM or /dev/urandom, then what savage OS are we on?
+# If there's no shuf, jot, perl, python, gawk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
 # Originally this was based off PID + date, but was rewritten to generate and churn a sufficient
