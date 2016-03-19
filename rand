@@ -152,8 +152,20 @@ elif command -v gawk > /dev/null 2>&1; then
   fi
   gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 
+#######################################  
+# No gawk?  Surely 'nawk' is hanging around?  Works very similar, but because we don't have systime()
+# we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
+# More testing will need to be performed.
+elif command -v nawk > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'nawk'"
+  fi
+  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+
+# Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
+
 #######################################
-# No perl, python or gawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
+# No perl, python, gawk or nawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
   if [ "${debug}" = true ]; then
@@ -238,7 +250,7 @@ elif [ -c /dev/urandom ]; then
   done    
 
 #######################################  
-# If there's no shuf, jot, perl, python, gawk, $RANDOM or /dev/urandom, then what savage OS are we on?
+# If there's no shuf, jot, perl, python, gawk, nawk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
 # Originally this was based off PID + date, but was rewritten to generate and churn a sufficient
