@@ -73,59 +73,59 @@ expect {
 		exit 1 
 	}
 
-        # Pre-check for a server that we might not have an sshkey on yet
-        -re "$whoami@$server's \[pP\]assword:" {
-                send_log -- "\nWARN: $whoami doesn't appear to have an sshkey setup for $server.  You might want to resolve that.\n"
-                send -- "$adminpass\r"
-                exp_continue
-        }
+    # Pre-check for a server that we might not have an sshkey on yet
+    -re "$whoami@$server's \[pP\]assword:" {
+        send_log -- "\nWARN: $whoami doesn't appear to have an sshkey setup for $server.  You might want to resolve that.\n"
+        send -- "$adminpass\r"
+        exp_continue
+    }
 
 	###### Note: the below block doesn't really work that well.  
 	###### The if statement is fine, but the sending of the adminpass is sometimes echo'd back, which messes the following expect
 	###### This block should be catering for a very rare condition though, so I haven't put too much effort into figuring it out
 
-        # Firstly, cater for password expiry for the admin account
-        -re "\\\(current\\\) UNIX \[pP\]assword:|\[oO\]ld \[pP\]assword:" {
-                # We need to test if the $user variable is the same as $whoami
-                # This is to cater for instances where the admin is updating his/her own password
-                # If true, it's sensible to feed the adminpass as their oldpwd, and newpass as their newpwd
-                # Otherwise if they're updating a user, we don't want to set the admin's newpwd to the user's newpwd!
+    # Firstly, cater for password expiry for the admin account
+    -re "\\\(current\\\) UNIX \[pP\]assword:|\[oO\]ld \[pP\]assword:" {
+        # We need to test if the $user variable is the same as $whoami
+        # This is to cater for instances where the admin is updating his/her own password
+        # If true, it's sensible to feed the adminpass as their oldpwd, and newpass as their newpwd
+        # Otherwise if they're updating a user, we don't want to set the admin's newpwd to the user's newpwd!
 
-                if { $whoami != $user } {
-                        send_user -- "\nWARN: It looks like you're updating a user's password\nI don't want to set your password to the user's password.\n"
-                        send_log -- "\nWARN: $whoami's account is expired on $server and needs to be manually sorted out.\n"
-                        # Try to end the remote session with Ctrl-D
-                        send \004
-                        exit 1
-                } else {
-                        # If the above test passes, we assume the Admin is updating his/her own password and continue
-                        send -- "$adminpass\r"
-                        expect {
-                                default {
-                                        send_user -- "\nERROR: It appears we can't authenticate to $server.  You'll need to resolve that manually.\n"
-                                        exit 1
-                                }
-                                -re "\[nN\]ew UNIX \[pP\]assword:|\[nN\]ew \[pP\]assword:|\[aA\]gain:|\[rR\]etype|\[rR\]e-enter|\[rR\]eenter" {
-                                        # Imitate inferior, slow, meatbag humans.  Mitigates mismatches.
-                                        sleep 2
-                                        send -- "$newpass\r"
-                                        # exp_continue loops us back to the expect, capturing the second New Password prompt
-                                        exp_continue
-                                }
-                                "BAD PASSWORD" {
-                                        send_user -- "\nWARN: Password change failed for $whoami on $server due to the password not being acceptable.  Try a more complex password.\n"
-                                        exit 1
-                                }
-                                # Upon completion of the password change, passwd should tell us it was successful.  We use this to exit
-                                # This prevents erroneous triggering of the default condition
-                                -re "updated|successfully" {
-                                        send_log -- "\nINFO: Password updated on $server for $whoami.\n"
-                                        exit 0
-                                }
-                        }
+        if { $whoami != $user } {
+            send_user -- "\nWARN: It looks like you're updating a user's password\nI don't want to set your password to the user's password.\n"
+            send_log -- "\nWARN: $whoami's account is expired on $server and needs to be manually sorted out.\n"
+            # Try to end the remote session with Ctrl-D
+            send \004
+            exit 1
+        } else {
+            # If the above test passes, we assume the Admin is updating his/her own password and continue
+            send -- "$adminpass\r"
+            expect {
+                default {
+                    send_user -- "\nERROR: It appears we can't authenticate to $server.  You'll need to resolve that manually.\n"
+                    exit 1
                 }
-	exp_continue
+                -re "\[nN\]ew UNIX \[pP\]assword:|\[nN\]ew \[pP\]assword:|\[aA\]gain:|\[rR\]etype|\[rR\]e-enter|\[rR\]eenter" {
+                    # Imitate inferior, slow, meatbag humans.  Mitigates mismatches.
+                    sleep 2
+                    send -- "$newpass\r"
+                    # exp_continue loops us back to the expect, capturing the second New Password prompt
+                    exp_continue
+                }
+                "BAD PASSWORD" {
+                    send_user -- "\nWARN: Password change failed for $whoami on $server due to the password not being acceptable.  Try a more complex password.\n"
+                    exit 1
+                }
+                # Upon completion of the password change, passwd should tell us it was successful.  We use this to exit
+                # This prevents erroneous triggering of the default condition
+                -re "updated|successfully" {
+                    send_log -- "\nINFO: Password updated on $server for $whoami.\n"
+                    exit 0
+                }
+            }
         }
+	exp_continue
+    }
 
 	# First expected prompt back will be your password to sudo up
 	-re "\\\[sudo\\\] password for|\[pP\]assword:" {
@@ -155,10 +155,10 @@ expect {
 			# Sorry, try again message indicates a failed sudo auth
 			-re "Sorry, try again." {
 			 	# Send Ctrl-D, as Ctrl-C won't escape this
-                                send \004
-                                send_user -- "\nERROR: I was unable to sudo up on $server.  Something might be wrong.  I'll leave the investigation to you...\n"
-                                exit 1
-                        }
+                send \004
+                send_user -- "\nERROR: I was unable to sudo up on $server.  Something might be wrong.  I'll leave the investigation to you...\n"
+                 exit 1
+            }
 			# Finally, set a default action for unexpected responses
 			default {
 				send_user -- "\nERROR: There was an unexpected problem performing this operation on $server.  I'll leave the investigation to you...\n"
