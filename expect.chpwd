@@ -22,43 +22,48 @@ set server [lindex $argv 0]
 set user [lindex $argv 1]
 set newpwd [lindex $argv 2]
 set whoami [exec whoami]
+set ostype [exec uname]
 
 # Check the newpwd variable.  If it's blank we look for the .newpwd file
 if {[llength $newpwd] == 0} {
-	if {[file exists .newpwd] == 1} {
-		# Reads new password from file '.newpwd' which is set to chmod 600
-		# Slightly more secure this way
-		set newpwdfiler [open "/home/$whoami/bin/.newpwd" r]
-		set newpass [read $newpwdfiler]
-	} elseif {[file exists .newpwd] == 0} {
-		send_user -- "I could not find the required file .newpwd\n"
-		exit 1
-	}
+    if {[file exists .newpwd] == 1} {
+    # Reads new password from file '.newpwd' which is set to chmod 600
+    # Slightly more secure this way
+    set newpwdfiler [open "/home/$whoami/bin/.newpwd" r]
+    set newpass [read $newpwdfiler]
+    } elseif {[file exists .newpwd] == 0} {
+        send_user -- "I could not find the required file .newpwd\n"
+        exit 1
+    }
 } else {
-	set newpass $newpwd
+    set newpass $newpwd
 }
 
 # Check for the .pwdfiler file
-if {[file exists .pwdfiler] == 1} {
-	# Reads admin password from file '.pwdfiler' which is set to chmod 600
-	# Slightly more secure this way
-	set filer [open "/home/$whoami/bin/.pwdfiler" r]
-	set adminpass [read $filer]
+if { [file exists .pwdfiler] == 1 } {
+    # Reads admin password from file '.pwdfiler' which is set to chmod 600
+    # Slightly more secure this way
+    set filer [open "/home/$whoami/bin/.pwdfiler" r]
+    set adminpass [read $filer]
 } else {
-	send_user -- "I could not find the required file .pwdfiler\n"
-	exit 1
+    send_user -- "I could not find the required file .pwdfiler\n"
+    exit 1
 }
 
 # Figure out if $server is Linux or Solaris.
-# If $server contains adc or kdc in it, we assume Linux and set sudo appropriately
-if { [regexp -nocase {adc|kdc} $server] } {
-	set sudo sudo
-	set type linux
-# Otherwise we assume Solaris, some of which have annoying path problems
+# If $ostype matches Linux, then we assume Linux and set sudo appropriately
+if { [regexp -nocase {Linux} $ostype] } {
+    set sudo sudo
+    set type linux
+# Otherwise we test for Solaris, some of which have annoying path problems
 # So we're forced to give the full sudo path
+} elseif { [regexp -nocase {SunOS} $ostype] } {
+    set sudo /usr/local/bin/sudo
+    set type solaris
+# Otherwise, fail out
 } else {
-	set sudo /usr/local/bin/sudo
-	set type solaris
+    send_user "\nERROR: I currently work on Linux or Solaris, this host appears to be neither.\n"
+    exit 1 
 }
 
 # Tell the logfile which server we're working on
@@ -67,11 +72,11 @@ send_log -- "\n==========================================\nStarting task on $ser
 # Open the connection and invoke sudo passwd
 spawn ssh -q -o StrictHostKeyChecking=no -t $server $sudo passwd $user
 expect {
-	# Set the default action to catch any unexpected responses
-	default { 
-		send_user "\nERROR: I was unable to connect to $server for some reason.  Please try manually.\n"
-		exit 1 
-	}
+    # Set the default action to catch any unexpected responses
+    default { 
+        send_user "\nERROR: I was unable to connect to $server for some reason.  Please try manually.\n"
+        exit 1 
+    }
 
     # Pre-check for a server that we might not have an sshkey on yet
     -re "$whoami@$server's \[pP\]assword:" {
@@ -80,9 +85,9 @@ expect {
         exp_continue
     }
 
-	###### Note: the below block doesn't really work that well.  
-	###### The if statement is fine, but the sending of the adminpass is sometimes echo'd back, which messes the following expect
-	###### This block should be catering for a very rare condition though, so I haven't put too much effort into figuring it out
+    ###### Note: the below block doesn't really work that well.  
+    ###### The if statement is fine, but the sending of the adminpass is sometimes echo'd back, which messes the following expect
+    ###### This block should be catering for a very rare condition though, so I haven't put too much effort into figuring it out
 
     # Firstly, cater for password expiry for the admin account
     -re "\\\(current\\\) UNIX \[pP\]assword:|\[oO\]ld \[pP\]assword:" {
@@ -122,66 +127,66 @@ expect {
                     send_log -- "\nINFO: Password updated on $server for $whoami.\n"
                     exit 0
                 }
-            }
-        }
-	exp_continue
-    }
 
-	# First expected prompt back will be your password to sudo up
-	-re "\\\[sudo\\\] password for|\[pP\]assword:" {
-		send -- "$adminpass\r"
-		# Now we expect the interaction with passwd
-		expect {
-			# If we come across NT Password, we're talking to an AD'd machine which isn't our problem
-			-re "NT \[pP\]assword" {
-				# Send Ctrl-D, as Ctrl-C won't escape this
-				send \004
-				send_user -- "WARN: $server authenticates against AD, which I don't touch.  Moving on...\n"
-				exit 1
-			}
-			-re "\[nN\]ew UNIX \[pP\]assword:|\[nN\]ew \[pP\]assword:|\[aA\]gain:|\[rR\]etype|\[rR\]e-enter|\[rR\]eenter" {
-				# Imitate inferior, slow, meatbag humans.  Mitigates mismatches.
-				sleep 2
-				send -- "$newpass\r"
-				# exp_continue loops us back to the expect, capturing the second New Password prompt
-				exp_continue
-			}
-			# Upon completion of the password change, passwd should tell us it was successful.  We use this to exit
-			# This prevents erroneous triggering of the default condition
-			-re "updated|successfully" {
-				send_log -- "\nINFO: Password updated on $server for $user.\n"
-				exit 0
-			}
-			# Sorry, try again message indicates a failed sudo auth
-			-re "Sorry, try again." {
-			 	# Send Ctrl-D, as Ctrl-C won't escape this
-                send \004
-                send_user -- "\nERROR: I was unable to sudo up on $server.  Something might be wrong.  I'll leave the investigation to you...\n"
-                 exit 1
             }
-			# Finally, set a default action for unexpected responses
-			default {
-				send_user -- "\nERROR: There was an unexpected problem performing this operation on $server.  I'll leave the investigation to you...\n"
-				exit 1
-			}
-		}
-	exp_continue
-	}
+        exp_continue
+        }
+
+        # First expected prompt back will be your password to sudo up
+        -re "\\\[sudo\\\] password for|\[pP\]assword:" {
+            send -- "$adminpass\r"
+            # Now we expect the interaction with passwd
+            expect {
+                # If we come across NT Password, we're talking to an AD'd machine which isn't our problem
+                -re "NT \[pP\]assword" {
+                    # Send Ctrl-D, as Ctrl-C won't escape this
+                    send \004
+                    send_user -- "WARN: $server authenticates against AD, which I don't touch.  Moving on...\n"
+                    exit 1
+                }
+                -re "\[nN\]ew UNIX \[pP\]assword:|\[nN\]ew \[pP\]assword:|\[aA\]gain:|\[rR\]etype|\[rR\]e-enter|\[rR\]eenter" {
+                    # Imitate inferior, slow, meatbag humans.  Mitigates mismatches.
+                    sleep 2
+                    send -- "$newpass\r"
+                    # exp_continue loops us back to the expect, capturing the second New Password prompt
+                    exp_continue
+                }
+                # Upon completion of the password change, passwd should tell us it was successful.  We use this to exit
+                # This prevents erroneous triggering of the default condition
+                -re "updated|successfully" {
+                    send_log -- "\nINFO: Password updated on $server for $user.\n"
+                    exit 0
+                }
+                # Sorry, try again message indicates a failed sudo auth
+                -re "Sorry, try again." {
+                    # Send Ctrl-D, as Ctrl-C won't escape this
+                    send \004
+                    send_user -- "\nERROR: I was unable to sudo up on $server.  Something might be wrong.  I'll leave the investigation to you...\n"
+                    exit 1
+                }
+                # Finally, set a default action for unexpected responses
+                default {
+                    send_user -- "\nERROR: There was an unexpected problem performing this operation on $server.  I'll leave the investigation to you...\n"
+                    exit 1
+                }
+        }
+    exp_continue
+    }
 }
 
 # Now we reconnect and expire the password while we still have a sudo session cached
 # First we check that we're not doing this to the admin.  We DON'T want to do this to the admin
 if { $whoami != $user } {
-	# Now we check if we're dealing with a Solaris server
-	if {"$type" == "solaris"} {
-		spawn ssh -q -o StrictHostKeyChecking=no -t $server $sudo passwd -f $user
-	# If it's not Solaris, it's likely Linux
-	} else {
-		spawn ssh -q -o StrictHostKeyChecking=no -t $server $sudo chage -d 0 $user
-	}
+    # Now we check if we're dealing with a Solaris server
+    if {"$type" == "solaris"} {
+        spawn ssh -q -o StrictHostKeyChecking=no -t $server $sudo passwd -f $user
+    # If it's not Solaris, it's likely Linux
+    } else {
+        spawn ssh -q -o StrictHostKeyChecking=no -t $server $sudo chage -d 0 $user
+    }
 }
 
 # Potentially there could be another connection to clear the sudo session on the remote server
 # I leave it be, as it'll timeout by design, usually after 15 minutes.  To do it though, uncomment:
 #spawn ssh -q -o StrictHostKeyChecking=no -t $server $sudo -K
-exit 0
+exi 0
