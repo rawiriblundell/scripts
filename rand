@@ -7,6 +7,9 @@
 # Date:        20160222
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
 #              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
+# Useful /
+# To-DO?:      It might be nice to have the option to zero-pad output numbers.  In the meantime
+#              sed 's/\<[0-9]\>/0&/' works nicely for turning 0-9 to 00-09.
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
