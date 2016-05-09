@@ -1,0 +1,93 @@
+#!/bin/bash
+# Purpose:    Init script for stunnel
+# Author:     Rawiri Blundell
+# Copyright:  (c) 2015 -, Datacom Systems Ltd (Wgtn)
+# Date:       20151117
+#
+# chkconfig:     2345 55 25
+# description:   stunnel
+# processname:   stunnel
+# config:        /etc/stunnel/stunnel.conf
+# pidfile:       /var/run/stunnel.pid
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+# Avoid using root's TMPDIR
+unset TMPDIR
+
+# Set PATH because stunnel isn't kept in the same place.  /usr/bin on some, /usr/sbin on others.
+PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/bin:/bin:/root/bin:$PATH
+export PATH
+
+# Figure out where the stunnel binary lives
+stunnelBin=$(which stunnel)
+
+# Declare the pidfile
+pidfile=/var/run/stunnel.pid
+
+# Hack to cater for RHEL6 fips handling differences.
+# stunnel-4.29-3.el6_4.x86_64 appears to be fine without declaring fips = yes|no, but will fail if it is declared
+# stunnel-4.29-3.el6_6.1.x86_64 fails unless fips is declared
+if [[ $(rpm -qa | grep stunnel) =~ .*el6_6.* ]]; then
+  configFile=/etc/stunnel/stunnel-nofips.conf
+else
+  configFile=/etc/stunnel/stunnel.conf
+fi
+
+# See how we were called.
+case "$1" in
+  start)
+    # Check that the config file exists
+    if [[ ! -f "${configFile}" ]]; then
+      printf "%s\n" "[stunnel ERROR]: could not find configuration file ${configFile}"
+      exit 1
+    # Next check to see if an stunnel pid exists
+    elif [[ -f "${pidfile}" ]]; then
+      # If it does, check to see if stunnel is already running
+      if netstat -anp | grep 6556 | grep stunnel &>/dev/null; then
+        printf "%s\n" "[stunnel INFO]: $(status stunnel)"
+        exit 1
+      # If the pid file exists, but a process doesn't, try to start
+      else
+        printf "%s\n" "[stunnel ERROR]: Server appears to be dead but pid file exists."
+        printf "%s"  "[stunnel INFO]: Trying to start stunnel..."
+        daemon stunnel "${configFile}"
+        RETVAL=$?
+        echo
+        exit $RETVAL
+      fi
+    # Otherwise, we should be good to start
+    else
+      printf "%s" "[stunnel INFO]: Starting stunnel..."
+      daemon stunnel "${configFile}"
+      RETVAL=$?
+      echo
+      exit $RETVAL
+    fi
+    ;;
+  stop)
+    # Stop daemons.
+    printf "%s" "[stunnel INFO]: Shutting down stunnel"
+    killproc "${stunnelBin}"
+    RETVAL=$?
+    echo
+    rm -f $pidfile
+    exit $RETVAL
+    ;;
+  restart)
+    $0 stop
+    $0 start
+    ;;
+  status)
+    printf "%s\n" "[stunnel INFO]: $(status stunnel)"
+    exit 0
+    ;;
+  *)
+    printf "%s\n" "[stunnel USAGE]: stunnel {start|stop|restart|status}"
+    exit 1
+    ;;
+esac
+
+exit 0
+~
