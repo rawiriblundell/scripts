@@ -4,6 +4,8 @@ scripts
 Here's where I keep various scripts that I've written and am able to share.  Many of my best scripts, sadly, are stuck being the IP of an employer or client.
 
 * check_pwage.sh - This is a script I developed for tying into NRPE, as well as for parsing collected passwd and shadow files
+* check_prtdiag.conf - This is an extended configuration file for the check_prtdiag NRPE script.  It adds extra hardware types.  Cleared for release by my employer.
+* check_showenvironment.conf - From memory, I wrote this one to parse the output of `showenvironment` when run on the XSCF interface.  Cleared for release by my employer.
 * chpwd - this is a wrapper script for expect.chpwd
 * clamav-rt - I was experimenting with using incrond to trigger some basic realtime scanning with clamav.  Abandoned for now.
 * expect.chpwd - An expect script I developed for updating a user's password across a Linux and Solaris based server fleet.  Caters for AD-authenticated hosts.  This is one of the more complete expect scripts for this task that I'm aware of, it does still have a couple of edge case issues though.
