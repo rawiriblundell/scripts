@@ -12,3 +12,4 @@ Here's where I keep various scripts that I've written and am able to share.  Man
 * rpm2pkg - I use 'fpm' to generate packages.  Its Solaris support is borked, so as a workaround I found an rpm2pkg script.  I figured I'd generate the rpm from fpm, then use rpm2pkg to convert it.  The script I found was borked too.  I rewrote it in bash and made it better.
 * shuffletest-kfy.sh - This is simply a test script for the Knuth Fisher-Yates algorithm.  The goal being to mix a special character into a generated password.  I was investigating potential performance improvements for my password generator.
 * shuffletest.sh - A basic algorithm for randomly inserting a special character into a generated password.  As with shuffletest-kfy.sh, this was simply for testing.
+* stunnel.init - This is an init script for using stunnel to secure check_mk communications.  Cleared for release by my employer.
