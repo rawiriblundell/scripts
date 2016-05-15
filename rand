@@ -30,20 +30,16 @@ debug=false
 nCount=1
 
 # Getopts
-while getopts "c:dhm:M:" Flags; do
+while getopts "dhm:M:N:" Flags; do
   case "${Flags}" in
-    c)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-c) '${OPTARG}' is not a number"; exit 1;;
-          *)           nCount="${OPTARG}";;
-        esac;;
     d)  debug="true";;
     h)  printf "%s\n" "rand - generate random positive integers" \
         "Optional Arguments:" \
-        "-c [count.  Number of numbers (Default:${nCount})]" \
         "-d [debug.  Tells you which processing method is used (Default:off)]" \
         "-h [help]" \
         "-m [minimum number (Default:${nMin})]" \
-        "-M [maximum number (Default:${nMax})]"
+        "-M [maximum number (Default:${nMax})]" \
+        "-N [count.  Number of numbers (Default:${nCount})]"
         exit 0;;
     m)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
@@ -52,6 +48,10 @@ while getopts "c:dhm:M:" Flags; do
     M)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-M) '${OPTARG}' is not a number"; exit 1;;
           *)           nMax="${OPTARG}";;
+        esac;;
+    N)  case "${OPTARG}" in
+          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-N) '${OPTARG}' is not a number"; exit 1;;
+          *)           nCount="${OPTARG}";;
         esac;;
     \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
          exit 1;;
