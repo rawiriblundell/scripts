@@ -107,6 +107,8 @@ if command -v shuf > /dev/null 2>&1; then
   fi
   # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the '-r' option
   # Once again, Solaris proves to be the bane of my scripting existence.  '-r' was introduced in v8.22 so that's our test
+  # This isn't an exact test (i.e. it would fail on, say, 8.31) but it will do for now.
+  # TO-DO: Fix this
   if shuf --version | head -1  | grep "8.[2-9][2-9]" > /dev/null 2>&1; then
     shuf -n "${nCount}" -r -i "${nMin}"-"${nMax}" 
   # Otherwise we assume an older version and loop it.  This has a performance penalty
