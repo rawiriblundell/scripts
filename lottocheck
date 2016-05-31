@@ -1,0 +1,104 @@
+#!/bin/bash
+#set -x
+
+inputDir=/home/rawiri/bin/lottoresults
+resultsFile=/home/rawiri/bin/lottoresults/nzlottoresults
+
+for i in {1..1546}; do
+  # For numbers below 9 we need to convert to e.g. 09
+  if [[ "$i" -le 9 ]]; then
+    j=$(sed 's/\<[0-9]\>/0&/' <<< "$i")
+  else
+    j="$i"
+  fi
+  
+  # grep out the draw numbers and into an array
+  drawArray=( $(grep "Draw $j:" "${resultsFile}" | cut -d: -f2-) )
+  
+  # Set the bonusball
+  bBall="${drawArray[6]}"
+  
+  # if the array has 8 numbers, then we set the powerball
+  if [[ "${#drawArray}" -eq 8 ]]; then
+    pBall="${drawArray[7]}"
+  fi
+  
+  inputFile="${inputDir}/result-$i"
+  while IFS= read -r -a lineArray; do
+    numCount=0
+    bonusBall=false
+    powerBall=false
+    for num in "${drawArray[@]:0:5}"; do
+      if [[ "${lineArray[@]}" =~ ${num} ]]; then
+        let numCount++
+      fi
+    done
+    
+    # Now check the bonus ball
+    if [[ "${lineArray[@]}" =~ ${bBall} ]]; then
+      bonusBall=true
+    fi
+    
+    # Now check the power ball
+    if [[ -n "${pBall}" ]] && [[ "${lineArray[7]}" = ${pBall} ]]; then
+      powerBall=true
+    fi
+
+    # Results
+    # We need more than three matches to bother
+    if [[ ${numCount} -ge 3 ]]; then
+      # Division 7 Powerball
+      if [[ "${numCount}" -eq 3 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 7 winner WITH POWERBALL!"
+      fi
+    
+      # Division 6 Lotto
+      if [[ "${numCount}" -eq 3 ]] && [[ "${bonusBall}" = true ]] && [[ "${powerBall}" = false ]]; then
+        printf "%s\n" "Draw $i: Division 6 winner!"
+      # Division 6 Powerball
+      elif [[ "${numCount}" -eq 3 ]] && [[ "${bonusBall}" = true ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 6 winner WITH POWERBALL!"
+      fi
+      
+      # Division 5 Lotto
+      if [[ "${numCount}" -eq 4 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = false ]]; then
+        printf "%s\n" "Draw $i: Division 5 winner!"
+      # Division 5 Powerball
+      elif [[ "${numCount}" -eq 4 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 5 winner WITH POWERBALL!"
+      fi
+
+      # Division 4 Lotto      
+      if [[ "${numCount}" -eq 4 ]] && [[ "${bonusBall}" = true ]] && [[ "${powerBall}" = false ]]; then
+        printf "%s\n" "Draw $i: Division 4 winner!"
+      # Division 4 Powerball
+      elif [[ "${numCount}" -eq 4 ]] && [[ "${bonusBall}" = true ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 4 winner WITH POWERBALL!"
+      fi
+      
+      # Division 3 Lotto
+      if [[ "${numCount}" -eq 5 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = false ]]; then
+        printf "%s\n" "Draw $i: Division 3 winner!"
+      # Division 3 Powerball
+      elif [[ "${numCount}" -eq 5 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 3 winner WITH POWERBALL!"
+      fi
+      
+      # Division 2 Lotto
+      if [[ "${numCount}" -eq 5 ]] && [[ "${bonusBall}" = true ]] && [[ "${powerBall}" = false ]]; then
+        printf "%s\n" "Draw $i: Division 2 winner!"
+      # Division 2 Powerball
+      elif [[ "${numCount}" -eq 5 ]] && [[ "${bonusBall}" = true ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 2 winner WITH POWERBALL!"
+      fi
+      
+      # Division 1 Lotto
+      if [[ "${numCount}" -eq 6 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = false ]]; then
+        printf "%s\n" "Draw $i: Division 1 winner!"
+      # Division 1 Powerball
+      elif [[ "${numCount}" -eq 6 ]] && [[ "${bonusBall}" = false ]] && [[ "${powerBall}" = true ]]; then
+        printf "%s\n" "Draw $i: Division 1 winner WITH POWERBALL!"
+      fi      
+    fi
+  done < <(tail -10 "${inputFile}" | tr -d "|")
+done
