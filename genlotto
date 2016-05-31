@@ -1,0 +1,37 @@
+#!/bin/bash
+
+printf "%s\n" \
+  "                  |Bonus|Power" \
+  "                  |Ball |Ball" \
+  "------------------------------"
+
+# 10 iterations
+for _ in {1..10}; do
+  # Generate an array of 6 random numbers, sort and uniq them to dedupe 
+  # use sed to zero-fill any single digit numbers
+  numArray=( $(rand -M 40 -N 6 | sed 's/\<[0-9]\>/0&/' | sort -n | uniq) )
+  # Generate a random number under 40 for our bonus ball
+  bonusBall=$(rand -M 40 | sed 's/\<[0-9]\>/0&/')
+  # Generate a random number under 10 for our power ball
+  powerBall=$(rand -M 10 | sed 's/\<[0-9]\>/0&/')
+
+  # If our array doesn't have 6 unique numbers, we add to it
+  while [[ "${#numArray[@]}" -lt 6 ]]; do
+    randNum=$(rand -M 40 | sed 's/\<[0-9]\>/0&/')
+     
+    if [[ ! "${numArray[@]}" =~ ${randNum} ]]; then
+      numArray+=(${randNum})
+    fi
+  done
+
+  # Now we sort the array one more time
+  sortNumArray=( $( printf "%s\n" "${numArray[@]}" | sort -n ) )
+
+  # Next, we check that the bonus ball is not in the array
+  while [[ "${numArray[@]}" =~ ${bonusBall} ]]; do
+    bonusBall=$(rand -M 40 | sed 's/\<[0-9]\>/0&/')
+  done
+
+  # Finally we print the line
+  printf "%s\n" "${sortNumArray[*]} | ${bonusBall} | ${powerBall}"
+done
