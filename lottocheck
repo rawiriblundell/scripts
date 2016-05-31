@@ -1,6 +1,6 @@
 #!/bin/bash
-# Description: See http://www.rawiriblundell.com/?p=1534
 #set -x
+# Description: See http://www.rawiriblundell.com/?p=1534
 
 inputDir=/home/rawiri/bin/lottoresults
 resultsFile=/home/rawiri/bin/lottoresults/nzlottoresults
@@ -41,7 +41,7 @@ for i in {1..1546}; do
     fi
     
     # Now check the power ball
-    if [[ -n "${pBall}" ]] && [[ "${lineArray[7]}" = ${pBall} ]]; then
+    if [[ -n "${pBall}" ]] && [[ "${lineArray[7]}" = "${pBall}" ]]; then
       powerBall=true
     fi
 
