@@ -105,14 +105,15 @@ if command -v shuf > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
   fi
-  # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the '-r' option
-  # Once again, Solaris proves to be the bane of my scripting existence.  '-r' was introduced in v8.22 so that's our test
-  # This isn't an exact test (i.e. it would fail on, say, 8.31) but it will do for now.
-  # TO-DO: Fix this
-  if shuf --version | head -1  | grep "8.[2-9][2-9]" > /dev/null 2>&1; then
-    shuf -n "${nCount}" -r -i "${nMin}"-"${nMax}" 
-  # Otherwise we assume an older version and loop it.  This has a performance penalty
-  # This is not so much to punish Solaris 11 users, but more to cater for any old instances of 'shuf'
+  # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the 
+  # '-r' option.  This option was introduced in v8.22
+  # Once again, Solaris proves to be the bane of my scripting existence.  
+
+  # Test if 'shuf' can use '-r' and if so, use it
+  if shuf -n 1 -r -i 1-10 >/dev/null 2>&1; then
+    shuf -n "${nCount}" -r -i "${nMin}"-"${nMax}"
+
+  # Otherwise we assume that '-r' isn't available, and do it the old fashioned way
   else
     while [ "${nCount}" -gt 0 ]; do
       shuf -n 1 -i "${nMin}"-"${nMax}"
@@ -120,7 +121,7 @@ if command -v shuf > /dev/null 2>&1; then
       nCount=$(( nCount - 1 ))
     done
   fi
-  
+
 #######################################
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is theoretically limited to 2^32-1 by the arc4random algorithm
