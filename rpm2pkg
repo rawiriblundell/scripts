@@ -228,11 +228,14 @@ rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
 
   if [[ -f "${TmpDir}"/preinstall ]]; then
     printf "%s\n" "i preinstall"
-  elif [[ -f "${TmpDir}"/postinstall ]]; then
+  fi
+  if [[ -f "${TmpDir}"/postinstall ]]; then
     printf "%s\n" "i postinstall"
-  elif [[ -f "${TmpDir}"/preremove ]]; then
+  fi
+  if [[ -f "${TmpDir}"/preremove ]]; then
     printf "%s\n" "i preremove"
-  elif [[ -f "${TmpDir}"/postremove ]]; then
+  fi
+  if [[ -f "${TmpDir}"/postremove ]]; then
     printf "%s\n" "i postremove"
   fi
 
