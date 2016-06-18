@@ -200,7 +200,7 @@ fi
 # Post-uninstall
 if [[ -n "${PostUninst}" ]]; then
   if [[ -f "${PostUninst}" ]]; then
-    cp "${PreInst}" "${TmpDir}"/postremove
+    cp "${PostUninst}" "${TmpDir}"/postremove
     printf "%s\n" "[INFO]: Copied post-uninstall script from '${PostUninst}' to '${TmpDir}/postremove'"
   else
     printf "%s\n" "[ERROR]: '${PostUninst}' does not appear to exist"
