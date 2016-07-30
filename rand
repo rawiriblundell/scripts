@@ -305,25 +305,25 @@ elif command -v date > /dev/null 2>&1; then
   
   # Otherwise, let's generate some "entropy" by simply running through this list of commands
   # And trying to remove as much whitespace as possible, then do a fast 'xor'
-  # Some of these may fail, so we redirect 2 to /dev/null.  Throw it all at the wall, see what sticks.
+  # Some of these may fail, so we redirect stderr into the stream anyway.  Throw it all at the wall, see what sticks.
   else
     {
-      ps -aux 2>/dev/null
+      ps -aux
       printf "%s" "$$"
-      top -n 1 2>/dev/null
+      top -n 1
       date '+%H%M%S'
-      df -k 2>/dev/null 
+      df -k 
       printf "%s" "$$"
-      netstat -a 2>/dev/null
+      netstat -a
       date '+%H%M%S'
-      vmstat -i 2>/dev/null
+      vmstat -i
       printf "%s" "$$"
-      vmstat -s 2>/dev/null
+      vmstat -s
       date '+%H%M%S'
-      iostat 2>/dev/null
+      iostat
       printf "%s" "$$"
-      pstat -afipSsT 2>/dev/null
-    } | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
+      pstat -afipSsT
+    } 2>&1 | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
   fi
   
   while [ "${nCount}" -gt 0 ]; do
