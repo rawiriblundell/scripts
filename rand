@@ -7,9 +7,6 @@
 # Date:        20160222
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
 #              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
-# Useful /
-# To-DO?:      It might be nice to have the option to zero-pad output numbers.  In the meantime
-#              sed 's/\<[0-9]\>/0&/' works nicely for turning 0-9 to 00-09.
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
@@ -28,9 +25,11 @@ nMin=1
 nMax=9223372036854775807   #2^63-1
 debug=false
 nCount=1
+repeat=false
+zeroPad=false
 
 # Getopts
-while getopts "dhm:M:N:" Flags; do
+while getopts "dhm:M:N:rz" Flags; do
   case "${Flags}" in
     d)  debug="true";;
     h)  printf "%s\n" "rand - generate random positive integers" \
@@ -39,7 +38,9 @@ while getopts "dhm:M:N:" Flags; do
         "-h [help]" \
         "-m [minimum number (Default:${nMin})]" \
         "-M [maximum number (Default:${nMax})]" \
-        "-N [count.  Number of numbers (Default:${nCount})]"
+        "-N [count.  Number of numbers (Default:${nCount})]" \
+        "-r [repeat.  Output lines may be repeated (Default:${repeat})]" \
+        "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]"
         exit 0;;
     m)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
@@ -53,6 +54,8 @@ while getopts "dhm:M:N:" Flags; do
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-N) '${OPTARG}' is not a number"; exit 1;;
           *)           nCount="${OPTARG}";;
         esac;;
+    r)  repeat=true;;
+    z)  zeroPad=true;;
     \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
          exit 1;;
     :)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'" >&2
@@ -69,6 +72,9 @@ fi
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax nCount
 
+################################################################################
+# Functions
+################################################################################
 # Function to determine required bitlength
 Fn_bitlen() {
   logn=1
@@ -99,81 +105,162 @@ Fn_xor() {
   done
 }
 
-###############################################################################
-# Cater for GNU shuf, nice and fast
-if command -v shuf > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
-  fi
-  # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the 
-  # '-r' option.  This option was introduced in v8.22
-  # Once again, Solaris proves to be the bane of my scripting existence.  
+# Setup the zeropad function
+if [ "${zeroPad}" = true ]; then
+  Fn_zeropad() { 
+    sed 's/\<[0-9]\>/0&/'
+  }
+else
+  Fn_zeropad() { 
+    cat -
+  }
+fi
 
-  # Test if 'shuf' can use '-r' and if so, use it
-  if shuf -n 1 -r -i 1-10 >/dev/null 2>&1; then
-    shuf -n "${nCount}" -r -i "${nMin}"-"${nMax}"
-
-  # Otherwise we assume that '-r' isn't available, and do it the old fashioned way
-  else
-    while [ "${nCount}" -gt 0 ]; do
-      shuf -n 1 -i "${nMin}"-"${nMax}"
-      # Decrement the counter
-      nCount=$(( nCount - 1 ))
-    done
-  fi
-
-#######################################
-# If we're on a BSD based host, likely 'jot' is available, so let's use it
-# 'jot' is theoretically limited to 2^32-1 by the arc4random algorithm
-# In testing it seems to  be limited somewhere between 2^31-1 and 2^32-1
-# so we set a limit based on the former figure of 2^31-1
-elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
-  fi
-  jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
-
-#######################################
-# Now we start going less-native and try perl.  Very likely to be there,   
-# so very likely this will be a commonly used option
-elif command -v perl > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
-  fi
-  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
-
-#######################################  
-# Otherwise, we try python
-elif command -v python > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'python'"
-  fi
-  python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
-
-#######################################  
-# No perl or python?  Let's try 'gawk'
-elif command -v gawk > /dev/null 2>&1; then
+# Function to generate numbers using 'gawk'
+method_gawk() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
   fi
   gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+}
 
-#######################################  
-# No gawk?  Surely 'nawk' is hanging around?  Works very similar, but because we don't have systime()
-# we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
-# More testing will need to be performed.
-elif command -v nawk > /dev/null 2>&1; then
+# Function to generate numbers using BSD 'jot'
+method_jot() {
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
+  fi
+  # Correct distribution issues
+  if [ "${nMax}" -lt 2147483647 ]; then
+    nMax=$(( nMax + 1 ))
+  fi
+
+  # Repeating generated numbers is the default behaviour of 'jot'
+  if [ "${repeat}" = true ]; then
+    jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
+  else
+    :
+  fi
+}
+
+# Function to generate numbers using manual entropy generation
+method_manual() {
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'manual entropy'"
+  fi
+
+  # Check we have the required binaries
+  ErrCount=0
+  for Prog in od tr tail head; do
+    if ! command -v "${Prog}" >/dev/null 2>&1; then
+      printf "%s\n" "[ERROR] rand: '${Prog}' is required but was not found."
+      ErrCount=$(( ErrCount + 1 ))
+    fi
+  done
+
+  # If any packages are missing, then ErrCount's going
+  # to be greater than 0, in which case, exit.
+  if [ "${ErrCount}" -gt 0 ]; then
+    exit 1
+  fi
+
+  # Let's try and find a hashing method, we use this sparingly for now
+  for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
+    if command -v "${cryptopt}" > /dev/null 2>&1; then
+      crypt="${cryptopt}"
+      if [ "${crypt}" = digest ]; then
+        crypt="digest -v -a md5"
+      fi
+      break
+    else
+      printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
+      exit 1
+    fi
+  done
+
+  # We need some "entropy", so let's first check for an existing entropy file from
+  # a previous invocation.  If found, we want to rotate its characters
+  if [ -f /tmp/entropy ]; then
+    Fn_chrotate < /tmp/entropy > /tmp/entropy2
+    mv /tmp/entropy2 /tmp/entropy
+
+  # Otherwise, let's generate some "entropy" by simply running through this list of commands
+  # And trying to remove as much whitespace as possible, then do a fast 'xor'
+  # Some of these may fail, so we redirect stderr into the stream anyway.  Throw it all at the wall, see what sticks.
+  else
+    {
+      ps -aux
+      printf "%s" "$$"
+      top -n 1
+      date '+%H%M%S'
+      df -k 
+      printf "%s" "$$"
+      netstat -a
+      date '+%H%M%S'
+      vmstat -i
+      printf "%s" "$$"
+      vmstat -s
+      date '+%H%M%S'
+      iostat
+      printf "%s" "$$"
+      pstat -afipSsT
+    } 2>&1 | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
+  fi
+
+  while [ "${nCount}" -gt 0 ]; do
+
+    # Get a string of 4 bytes from /tmp/entropy using od
+    # format it as an unsigned integer between 0 and 2^32-1
+    nRand=$(od -N 4 -A n -t uL /tmp/entropy | tr -d " ")
+
+    # Pass nRand through a standard modulo
+    printf "%s\n" "$(( nRand % (nMax + 1 - nMin) + nMin ))"
+
+    # Decrement the counter
+    nCount=$(( nCount - 1 ))
+
+    # Now we have to churn the entropy file.  We remove the leading 32 Bytes 
+    # of the entropy file, and temporarily store the result
+    tail -c +33 /tmp/entropy | tr -d "\n" > /tmp/entropy2
+
+    {
+      # Seed some more data into the temporary entropy file, here we hash the PID
+      printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n" | "${crypt}"
+      # Rotate the entropy, get the first 64 chars, xor it to the bottom of the temp file
+      printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor)"
+      date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
+    } >> /tmp/entropy2
+
+    # Move the temporary file into place
+    mv /tmp/entropy2 /tmp/entropy
+  done 
+}
+
+# Function to generate numbers using 'nawk'
+method_nawk() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'nawk'"
   fi
   nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+}
 
-# Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
+# Function to generate numbers using 'perl'
+method_perl() {
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
+  fi
+  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
+}
 
-#######################################
-# No perl, python, gawk or nawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
-# We start by checking if we have the RANDOM env var
-elif [ -n "${RANDOM}" ]; then
+# Function to generate numbers using 'python'
+method_python() {
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'python'"
+  fi
+  python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
+}
+
+# Function to generate numbers using shell 'RANDOM' special variable
+method_RANDOM() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
   fi
@@ -204,14 +291,43 @@ elif [ -n "${RANDOM}" ]; then
       nCount=$(( nCount - 1 ))
     fi
   done
+}
 
-#######################################
-# Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
-elif [ -c /dev/urandom ]; then
+# Function to generate numbers using GNU 'shuf'
+method_shuf() {
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
+  fi
+  # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the 
+  # '-r' option.  This option was introduced in v8.22
+  # Once again, Solaris proves to be the bane of my scripting existence.  
+
+  # First we test if the repeat option has been set, as this requires special handling
+  if [ "${repeat}" = true ]; then
+    # Test if 'shuf' can use '-r' and if so, use it
+    if shuf -n 1 -r -i 1-10 >/dev/null 2>&1; then
+      shuf -n "${nCount}" -r -i "${nMin}"-"${nMax}"
+
+    # Otherwise we assume that '-r' isn't available, and do it the old fashioned way
+    else
+      while [ "${nCount}" -gt 0 ]; do
+        shuf -n 1 -i "${nMin}"-"${nMax}"
+        # Decrement the counter
+        nCount=$(( nCount - 1 ))
+      done
+    fi
+  # If repeat isn't true, just do this
+  else
+    shuf -n "${nCount}" -i "${nMin}"-"${nMax}"
+  fi
+}
+
+# Function to generate random numbers using '/dev/urandom'
+method_urandom() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
   fi
-  
+
   # Check we have the required binaries
   ErrCount=0
   for Prog in od tr; do
@@ -226,7 +342,7 @@ elif [ -c /dev/urandom ]; then
   if [ "${ErrCount}" -gt 0 ]; then
     exit 1
   fi
-  
+
   # If performance is more important to you than functionality, uncomment this
   # This will have the effect of limiting this mode to 56 bit integers
   # Which makes '&& [ $((nRandShift + nMin)) -gt 0 ]' effectively redundant.
@@ -253,9 +369,51 @@ elif [ -c /dev/urandom ]; then
       printf "%s\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
-  done    
+  done 
+}
 
-#######################################  
+###############################################################################
+# Cater for GNU shuf, nice and fast
+if command -v shuf > /dev/null 2>&1; then
+  method_shuf
+
+# If we're on a BSD based host, likely 'jot' is available, so let's use it
+# 'jot' is theoretically limited to 2^32-1 by the arc4random algorithm
+# In testing it seems to  be limited somewhere between 2^31-1 and 2^32-1
+# so we set a limit based on the former figure of 2^31-1
+elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+  method_jot
+
+# Now we start going less-native and try perl.  Very likely to be there,   
+# so very likely this will be a commonly used option
+elif command -v perl > /dev/null 2>&1; then
+  method_perl
+
+# Otherwise, we try python
+elif command -v python > /dev/null 2>&1; then
+  method_python
+
+# No perl or python?  Let's try 'gawk'
+elif command -v gawk > /dev/null 2>&1; then
+  method_gawk
+
+# No gawk?  Surely 'nawk' is hanging around?  Works very similar, but because we don't have systime()
+# we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
+# More testing will need to be performed.
+elif command -v nawk > /dev/null 2>&1; then
+  method_nawk
+
+# Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
+
+# No perl, python, gawk or nawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
+# We start by checking if we have the RANDOM env var
+elif [ -n "${RANDOM}" ]; then
+  method_RANDOM
+
+# Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
+elif [ -c /dev/urandom ]; then
+  method_urandom   
+
 # If there's no shuf, jot, perl, python, gawk, nawk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
 #
@@ -264,99 +422,10 @@ elif [ -c /dev/urandom ]; then
 # and so I decided to limit the number of bytes read and simply use a modulo formula
 # The point being that if we ever got to this point, it's enough to generate something.
 elif command -v date > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'date'"
-  fi
-  
-  # Check we have the required binaries
-  ErrCount=0
-  for Prog in od tr tail head; do
-    if ! command -v "${Prog}" >/dev/null 2>&1; then
-      printf "%s\n" "[ERROR] rand: '${Prog}' is required but was not found."
-      ErrCount=$(( ErrCount + 1 ))
-    fi
-  done
+  method_manual  
 
-  # If any packages are missing, then ErrCount's going
-  # to be greater than 0, in which case, exit.
-  if [ "${ErrCount}" -gt 0 ]; then
-    exit 1
-  fi
-
-  # Let's try and find a hashing method, we use this sparingly for now
-  for cryptopt in sha256sum sha1sum shasum md5sum digest csum cksum; do
-    if command -v "${cryptopt}" > /dev/null 2>&1; then
-      crypt="${cryptopt}"
-      if [ "${crypt}" = digest ]; then
-        crypt="digest -v -a md5"
-      fi
-      break
-    else
-      printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
-      exit 1
-    fi
-  done
-  
-  # We need some "entropy", so let's first check for an existing entropy file from
-  # a previous invocation.  If found, we want to rotate its characters
-  if [ -f /tmp/entropy ]; then
-    Fn_chrotate < /tmp/entropy > /tmp/entropy2
-    mv /tmp/entropy2 /tmp/entropy
-  
-  # Otherwise, let's generate some "entropy" by simply running through this list of commands
-  # And trying to remove as much whitespace as possible, then do a fast 'xor'
-  # Some of these may fail, so we redirect stderr into the stream anyway.  Throw it all at the wall, see what sticks.
-  else
-    {
-      ps -aux
-      printf "%s" "$$"
-      top -n 1
-      date '+%H%M%S'
-      df -k 
-      printf "%s" "$$"
-      netstat -a
-      date '+%H%M%S'
-      vmstat -i
-      printf "%s" "$$"
-      vmstat -s
-      date '+%H%M%S'
-      iostat
-      printf "%s" "$$"
-      pstat -afipSsT
-    } 2>&1 | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
-  fi
-  
-  while [ "${nCount}" -gt 0 ]; do
-
-    # Get a string of 4 bytes from /tmp/entropy using od
-    # format it as an unsigned integer between 0 and 2^32-1
-    nRand=$(od -N 4 -A n -t uL /tmp/entropy | tr -d " ")
-
-    # Pass nRand through a standard modulo
-    printf "%s\n" "$(( nRand % (nMax + 1 - nMin) + nMin ))"
-
-    # Decrement the counter
-    nCount=$(( nCount - 1 ))
-
-    # Now we have to churn the entropy file.  We remove the leading 32 Bytes 
-    # of the entropy file, and temporarily store the result
-    tail -c +33 /tmp/entropy | tr -d "\n" > /tmp/entropy2
-
-    {
-      # Seed some more data into the temporary entropy file, here we hash the PID
-      printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n" | "${crypt}"
-      # Rotate the entropy, get the first 64 chars, xor it to the bottom of the temp file
-      printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor)"
-      date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
-    } >> /tmp/entropy2
-
-    # Move the temporary file into place
-    mv /tmp/entropy2 /tmp/entropy
-  done   
-
-##############################################################################
 # Ultimate failure
 else
   printf "%s\n" "[ERROR] rand: I could not find a valid method with which to process your request."
   exit 1
-fi
+fi | Fn_zeropad
