@@ -121,7 +121,13 @@ method_gawk() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
   fi
-  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  # Repeating generated numbers is the default behaviour of 'gawk'
+  if [ "${repeat}" = true ]; then
+    gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  else
+    maxCount=$(( nCount * 10 ))
+    gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${maxCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }' | awk '!x[$0]++'
+  fi
 }
 
 # Function to generate numbers using BSD 'jot'
