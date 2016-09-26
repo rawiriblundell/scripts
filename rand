@@ -32,15 +32,15 @@ zeroPad=false
 while getopts "dhm:M:N:rz" Flags; do
   case "${Flags}" in
     d)  debug="true";;
-    h)  printf "%s\n" "rand - generate random positive integers" \
-        "Optional Arguments:" \
+    h)  printf "%s\n" "" "rand - generate random positive integers" \
+        "" "Optional Arguments:" \
         "-d [debug.  Tells you which processing method is used (Default:off)]" \
         "-h [help]" \
         "-m [minimum number (Default:${nMin})]" \
         "-M [maximum number (Default:${nMax})]" \
         "-N [count.  Number of numbers (Default:${nCount})]" \
         "-r [repeat.  Output lines may be repeated (Default:${repeat})]" \
-        "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]"
+        "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
         exit 0;;
     m)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
