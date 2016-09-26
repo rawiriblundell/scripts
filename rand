@@ -92,6 +92,35 @@ Fn_chrotate() {
   tr ' !"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~' 'z{|}~ !"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxy'
 }
 
+# This function ensures equal distribution for methods that don't support it
+# If you request random numbers between 1 and 10, you should only get a complete
+# set of random numbers between 1 and 10.  This is disabled with '-r'
+Fn_fill() {
+  # Capture the requested number of integers
+  maxCount="${nCount}"
+  # Multiply it to improve the chances of unique elements being selected
+  nCount=$(( nCount * 10 ))
+  # Call the specified method.  It will generate nCount times more integers
+  $1 | Fn_unique | head -n "${maxCount}"
+
+  #grep -vxf <(echo $var2 | tr " " "\n") <(echo $var | tr " " "\n")
+
+}
+
+# This function allows us to print out unsorted, unique integers
+Fn_unique() {
+  # If 'awk' is available, we use it
+  if command -v awk >/dev/null 2>&1; then
+    awk '!x[$0]++'
+  # Otherwise we use a double sort.  This can be brutally slow at scale.
+  # We first prepend each line with a line number, then perform a unique short-name
+  # on the second field (i.e. the generated integers), then we sort again on the
+  # line numbers to return the randomness and use cut to print out the integers
+  else
+    nl | sort -k 2 -u | sort | cut -f2
+  fi
+}
+
 # xor function derived from http://zurlinux.com/?p=712
 Fn_xor() {
   while read -r line; do
@@ -392,13 +421,7 @@ elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
   if [ "${repeat}" = true ]; then
     method_jot
   else
-    # We grab the current desired number of integers
-    maxCount="${nCount}"
-    # To improve the likelihood of selection, we generate 10x more than required
-    nCount=$(( nCount * 10 ))
-    # Then we use 'awk' to give an unsorted list of unique integers
-    # and use the maxCount variable with 'head' to limit any excess
-    method_jot | awk '!x[$0]++' | head -n "${maxCount}"
+    Fn_fill method_jot
   fi
 
 # Now we start going less-native and try perl.  Very likely to be there,   
@@ -407,9 +430,7 @@ elif command -v perl > /dev/null 2>&1; then
   if [ "${repeat}" = true ]; then
     method_perl
   else
-    maxCount="${nCount}"
-    nCount=$(( nCount * 10 ))
-    method_perl | awk '!x[$0]++' | head -n "${maxCount}"
+    Fn_fill method_perl
   fi
 
 # Otherwise, we try python
@@ -417,9 +438,7 @@ elif command -v python > /dev/null 2>&1; then
   if [ "${repeat}" = true ]; then
     method_python
   else
-    maxCount="${nCount}"
-    nCount=$(( nCount * 10 ))
-    method_python | awk '!x[$0]++' | head -n "${maxCount}"
+    Fn_fill method_python
   fi
 
 # No perl or python?  Let's try 'gawk'
@@ -427,9 +446,7 @@ elif command -v gawk > /dev/null 2>&1; then
   if [ "${repeat}" = true ]; then
     method_gawk
   else
-    maxCount="${nCount}"
-    nCount=$(( nCount * 10 ))
-    method_gawk | awk '!x[$0]++' | head -n "${maxCount}"
+    Fn_fill method_gawk
   fi
   
 # No gawk?  Surely 'nawk' is hanging around?  Works very similar, but because we don't have systime()
@@ -439,9 +456,7 @@ elif command -v nawk > /dev/null 2>&1; then
   if [ "${repeat}" = true ]; then
     method_nawk
   else
-    maxCount="${nCount}"
-    nCount=$(( nCount * 10 ))
-    method_nawk | awk '!x[$0]++' | head -n "${maxCount}"
+    Fn_fill method_nawk
   fi
 
 # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
@@ -449,11 +464,19 @@ elif command -v nawk > /dev/null 2>&1; then
 # No perl, python, gawk or nawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
-  method_RANDOM
+  if [ "${repeat}" = true ]; then
+    method_RANDOM
+  else
+    Fn_fill method_RANDOM
+  fi
 
 # Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
 elif [ -c /dev/urandom ]; then
-  method_urandom   
+  if [ "${repeat}" = true ]; then
+    method_urandom
+  else
+    Fn_fill method_urandom
+  fi  
 
 # If there's no shuf, jot, perl, python, gawk, nawk, $RANDOM or /dev/urandom, then what savage OS are we on?
 # Let's try to make something up.  Let's be honest, though, by this point it's an academic exercise.
@@ -463,7 +486,11 @@ elif [ -c /dev/urandom ]; then
 # and so I decided to limit the number of bytes read and simply use a modulo formula
 # The point being that if we ever got to this point, it's enough to generate something.
 elif command -v date > /dev/null 2>&1; then
-  method_manual  
+  if [ "${repeat}" = true ]; then
+    method_manual
+  else
+    Fn_fill method_manual
+  fi
 
 # Ultimate failure
 else
