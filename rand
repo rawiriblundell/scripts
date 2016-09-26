@@ -415,7 +415,13 @@ elif command -v gawk > /dev/null 2>&1; then
 # we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
 # More testing will need to be performed.
 elif command -v nawk > /dev/null 2>&1; then
-  method_nawk
+  if [ "${repeat}" = true ]; then
+    method_nawk
+  else
+    maxCount="${nCount}"
+    nCount=$(( nCount * 10 ))
+    method_nawk | awk '!x[$0]++' | head -n "${maxCount}"
+  fi
 
 # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
 
