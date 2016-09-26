@@ -244,6 +244,11 @@ method_perl() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
   fi
+
+  # Correct distribution issues
+  nMax=$(( nMax + 1 ))
+  export nMax
+  
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
 }
 
@@ -395,11 +400,23 @@ elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
-  method_perl
+  if [ "${repeat}" = true ]; then
+    method_perl
+  else
+    maxCount="${nCount}"
+    nCount=$(( nCount * 10 ))
+    method_perl | awk '!x[$0]++' | head -n "${maxCount}"
+  fi
 
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
-  method_python
+  if [ "${repeat}" = true ]; then
+    method_python
+  else
+    maxCount="${nCount}"
+    nCount=$(( nCount * 10 ))
+    method_python | awk '!x[$0]++' | head -n "${maxCount}"
+  fi
 
 # No perl or python?  Let's try 'gawk'
 elif command -v gawk > /dev/null 2>&1; then
