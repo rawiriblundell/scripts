@@ -121,13 +121,7 @@ method_gawk() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
   fi
-  # Repeating generated numbers is the default behaviour of 'gawk'
-  if [ "${repeat}" = true ]; then
-    gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
-  else
-    maxCount=$(( nCount * 10 ))
-    gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${maxCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }' | awk '!x[$0]++'
-  fi
+  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using BSD 'jot'
@@ -135,17 +129,13 @@ method_jot() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
+
   # Correct distribution issues
   if [ "${nMax}" -lt 2147483647 ]; then
     nMax=$(( nMax + 1 ))
   fi
-
-  # Repeating generated numbers is the default behaviour of 'jot'
-  if [ "${repeat}" = true ]; then
-    jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
-  else
-    :
-  fi
+  
+  jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 }
 
 # Function to generate numbers using manual entropy generation
@@ -380,6 +370,7 @@ method_urandom() {
 
 ###############################################################################
 # Cater for GNU shuf, nice and fast
+# This function will also cater for the repeat option natively
 if command -v shuf > /dev/null 2>&1; then
   method_shuf
 
@@ -388,7 +379,18 @@ if command -v shuf > /dev/null 2>&1; then
 # In testing it seems to  be limited somewhere between 2^31-1 and 2^32-1
 # so we set a limit based on the former figure of 2^31-1
 elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
-  method_jot
+  # Repeating generated numbers is the default behaviour of 'jot'
+  if [ "${repeat}" = true ]; then
+    method_jot
+  else
+    maxCount="${nMax}
+    if [ "$(( nMax * 10 ))" -lt 2147483647 ]; then
+      nMax=$(( nMax * 10 ))
+    else
+      nMax=2147483647
+    fi
+    method_jot | awk '!x[$0]++' | head -n "${maxCount}"
+  fi
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
@@ -401,8 +403,18 @@ elif command -v python > /dev/null 2>&1; then
 
 # No perl or python?  Let's try 'gawk'
 elif command -v gawk > /dev/null 2>&1; then
-  method_gawk
-
+  if [ "${repeat}" = true ]; then
+    method_gawk
+  else
+    maxCount="${nMax}
+    if [ "$(( nMax * 10 ))" -lt 9223372036854775807 ]; then
+      nMax=$(( nMax * 10 ))
+    else
+      nMax=9223372036854775807
+    fi
+    method_gawk | awk '!x[$0]++' | head -n "${maxCount}"
+  fi
+  
 # No gawk?  Surely 'nawk' is hanging around?  Works very similar, but because we don't have systime()
 # we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
 # More testing will need to be performed.
