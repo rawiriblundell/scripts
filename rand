@@ -383,12 +383,12 @@ elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
   if [ "${repeat}" = true ]; then
     method_jot
   else
-    maxCount="${nMax}
-    if [ "$(( nMax * 10 ))" -lt 2147483647 ]; then
-      nMax=$(( nMax * 10 ))
-    else
-      nMax=2147483647
-    fi
+    # We grab the current desired number of integers
+    maxCount="${nCount}
+    # To improve the likelihood of selection, we generate 10x more than required
+    nCount=$(( nCount * 10 ))
+    # Then we use 'awk' to give an unsorted list of unique integers
+    # and use the maxCount variable with 'head' to limit any excess
     method_jot | awk '!x[$0]++' | head -n "${maxCount}"
   fi
 
@@ -406,12 +406,8 @@ elif command -v gawk > /dev/null 2>&1; then
   if [ "${repeat}" = true ]; then
     method_gawk
   else
-    maxCount="${nMax}
-    if [ "$(( nMax * 10 ))" -lt 9223372036854775807 ]; then
-      nMax=$(( nMax * 10 ))
-    else
-      nMax=9223372036854775807
-    fi
+    maxCount="${nCount}
+    nCount=$(( nCount * 10 ))
     method_gawk | awk '!x[$0]++' | head -n "${maxCount}"
   fi
   
