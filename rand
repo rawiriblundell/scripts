@@ -137,9 +137,13 @@ Fn_xor() {
 # Setup the zeropad function
 if [ "${zeroPad}" = true ]; then
   Fn_zeropad() {
-    # It appears that 'awk' is more portable
-    #sed 's/\<[0-9]\>/0&/'
-    awk '{$1 = sprintf("%02d", $1); print}'
+    # It appears that 'awk' is more portable vs sed 's/\<[0-9]\>/0&/'
+    if command -v awk >/dev/null 2>&1; then
+      awk '{$1 = sprintf("%02d", $1); print}'
+    else
+      printf "%s\n" "[ERROR] rand: 'awk' is required for zero-padding but was not found."
+      exit 1
+    fi
   }
 else
   Fn_zeropad() { 
