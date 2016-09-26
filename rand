@@ -170,7 +170,7 @@ method_manual() {
       fi
       break
     else
-      printf "%s\n" "[ERROR] rand: 'date' method was selected, but no hash method is available"
+      printf "%s\n" "[ERROR] rand: 'manual entropy' method was selected, but no hash method is available."
       exit 1
     fi
   done
@@ -375,6 +375,8 @@ method_urandom() {
   done 
 }
 
+###############################################################################
+# Main
 ###############################################################################
 # Cater for GNU shuf, nice and fast
 # This function will also cater for the repeat option natively
