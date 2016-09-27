@@ -27,6 +27,10 @@ debug=false
 nCount=1
 repeat=false
 zeroPad=false
+tmpDir=/tmp/rand
+
+# In case we actually use $tmpDir, let's trap and delete it
+trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 
 # Getopts
 while getopts "dhm:M:N:rz" Flags; do
@@ -39,7 +43,7 @@ while getopts "dhm:M:N:rz" Flags; do
         "-m [minimum number (Default:${nMin})]" \
         "-M [maximum number (Default:${nMax})]" \
         "-N [count.  Number of numbers (Default:${nCount})]" \
-        "-r [repeat.  Output lines may be repeated (Default:${repeat})]" \
+        "-r [repeat.  Output lines may be repeated (Default:off)]" \
         "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
         exit 0;;
     m)  case "${OPTARG}" in
@@ -56,9 +60,9 @@ while getopts "dhm:M:N:rz" Flags; do
         esac;;
     r)  repeat=true;;
     z)  zeroPad=true;;
-    \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." >&2
+    \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage."
          exit 1;;
-    :)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'" >&2
+    :)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'"
         exit 1;;
   esac
 done
@@ -95,16 +99,40 @@ Fn_chrotate() {
 # This function ensures equal distribution for methods that don't support it
 # If you request random numbers between 1 and 10, you should only get a complete
 # set of random numbers between 1 and 10.  This is disabled with '-r'
+# Note: for POSIX compat, we sadly can't use arrays (can we test for that capability?)
+# this means there will be potentially a massive performance hit at scale
 Fn_fill() {
   # Capture the requested number of integers
   maxCount="${nCount}"
-  # Multiply it to improve the chances of unique elements being selected
-  nCount=$(( nCount * 10 ))
-  # Call the specified method.  It will generate nCount times more integers
-  $1 | Fn_unique | head -n "${maxCount}"
+  
+  # Multiply the original count to improve the chances of unique elements being selected
+  nCount=$(( nCount * 15 ))
+  
+  # Call the method specified upon function invocation
+  # Use Fn_unique to get an unsorted list of unique integers
+  initFill=$($1 | Fn_unique)
 
-  #grep -vxf <(echo $var2 | tr " " "\n") <(echo $var | tr " " "\n")
+  # Count how many unique integers we have generated
+  initCount=$(printf "%s\n" "${initFill}" | wc -l)
 
+  # If we've generated enough to satisfy nCount, then we just print them out
+  if [ "${initCount}" -ge "${maxCount}" ]; then
+    printf "%s\n" "${initFill}" | head -n "${maxCount}"
+    
+  # Otherwise, we walk through a few steps to try and quickly fill the gap
+  else
+    # Create a tmpdir
+    mkdir -p "${tmpDir}"
+    
+    # Now let's make these files, starting by dumping what we already have
+    printf "%s\n" "${initFill}" > "${tmpDir}"/rnginit
+
+    # Next, let's generate a list of what's missing
+    printf "%s\n" "${initFill}" "$(seq 1 "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
+      
+    # Interleave the two using 'paste' and dump them out
+    paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
+  fi
 }
 
 # This function allows us to print out unsorted, unique integers
@@ -164,12 +192,6 @@ method_jot() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
   fi
-
-  # Correct distribution issues
-  if [ "${nMax}" -lt 2147483647 ]; then
-    nMax=$(( nMax + 1 ))
-  fi
-  
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 }
 
@@ -279,11 +301,6 @@ method_perl() {
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
   fi
-
-  # Correct distribution issues
-  nMax=$(( nMax + 1 ))
-  export nMax
-  
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
 }
 
@@ -407,6 +424,19 @@ method_urandom() {
     fi
   done 
 }
+
+# Check if 'seq' is available, if not, provide a basic replacement function
+# Note: this has been stripped back to cater only for ascending sequences
+# A full, bash-friendly version is available at https://github.com/rawiriblundell
+if ! command -v seq >/dev/null 2>&1; then
+  seq() {
+    i=$1
+    while [ "$i" -lt "$2" ]; do
+      printf "%s\n" "$i"
+      i=$(( i + 1 ))
+    done
+  }
+fi
 
 ###############################################################################
 # Main
