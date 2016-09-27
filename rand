@@ -181,26 +181,16 @@ fi
 
 # Function to generate numbers using 'gawk'
 method_gawk() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
-  fi
   gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using BSD 'jot'
 method_jot() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
-  fi
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 }
 
 # Function to generate numbers using manual entropy generation
 method_manual() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'manual entropy'"
-  fi
-
   # Check we have the required binaries
   ErrCount=0
   for Prog in od tr tail head; do
@@ -290,34 +280,21 @@ method_manual() {
 
 # Function to generate numbers using 'nawk'
 method_nawk() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'nawk'"
-  fi
   nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using 'perl'
 method_perl() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
-  fi
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
 }
 
 # Function to generate numbers using 'python'
 method_python() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'python'"
-  fi
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
 }
 
 # Function to generate numbers using shell 'RANDOM' special variable
 method_RANDOM() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
-  fi
-
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
   Fn_bitlen
 
@@ -348,9 +325,6 @@ method_RANDOM() {
 
 # Function to generate numbers using GNU 'shuf'
 method_shuf() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
-  fi
   # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the 
   # '-r' option.  This option was introduced in v8.22
   # Once again, Solaris proves to be the bane of my scripting existence.  
@@ -377,10 +351,6 @@ method_shuf() {
 
 # Function to generate random numbers using '/dev/urandom'
 method_urandom() {
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
-  fi
-
   # Check we have the required binaries
   ErrCount=0
   for Prog in od tr; do
@@ -431,7 +401,7 @@ method_urandom() {
 if ! command -v seq >/dev/null 2>&1; then
   seq() {
     i=$1
-    while [ "$i" -lt "$2" ]; do
+    while [ "$i" -ne "$(( $2 + 1 ))" ]; do
       printf "%s\n" "$i"
       i=$(( i + 1 ))
     done
@@ -444,6 +414,9 @@ fi
 # Cater for GNU shuf, nice and fast
 # This function will also cater for the repeat option natively
 if command -v shuf > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
+  fi
   method_shuf
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
@@ -451,6 +424,9 @@ if command -v shuf > /dev/null 2>&1; then
 # In testing it seems to  be limited somewhere between 2^31-1 and 2^32-1
 # so we set a limit based on the former figure of 2^31-1
 elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
+  fi
   # Repeating generated numbers is the default behaviour of 'jot'
   if [ "${repeat}" = true ]; then
     method_jot
@@ -461,6 +437,9 @@ elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
+  fi
   if [ "${repeat}" = true ]; then
     method_perl
   else
@@ -469,6 +448,9 @@ elif command -v perl > /dev/null 2>&1; then
 
 # Otherwise, we try python
 elif command -v python > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'python'"
+  fi
   if [ "${repeat}" = true ]; then
     method_python
   else
@@ -477,6 +459,9 @@ elif command -v python > /dev/null 2>&1; then
 
 # No perl or python?  Let's try 'gawk'
 elif command -v gawk > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
+  fi
   if [ "${repeat}" = true ]; then
     method_gawk
   else
@@ -487,6 +472,9 @@ elif command -v gawk > /dev/null 2>&1; then
 # we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
 # More testing will need to be performed.
 elif command -v nawk > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'nawk'"
+  fi
   if [ "${repeat}" = true ]; then
     method_nawk
   else
@@ -498,6 +486,9 @@ elif command -v nawk > /dev/null 2>&1; then
 # No perl, python, gawk or nawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
 # We start by checking if we have the RANDOM env var
 elif [ -n "${RANDOM}" ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
+  fi
   if [ "${repeat}" = true ]; then
     method_RANDOM
   else
@@ -506,6 +497,9 @@ elif [ -n "${RANDOM}" ]; then
 
 # Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
 elif [ -c /dev/urandom ]; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
+  fi
   if [ "${repeat}" = true ]; then
     method_urandom
   else
@@ -520,6 +514,9 @@ elif [ -c /dev/urandom ]; then
 # and so I decided to limit the number of bytes read and simply use a modulo formula
 # The point being that if we ever got to this point, it's enough to generate something.
 elif command -v date > /dev/null 2>&1; then
+  if [ "${debug}" = true ]; then
+    printf "%s\n" "[DEBUG] rand: Method used is 'manual entropy'"
+  fi
   if [ "${repeat}" = true ]; then
     method_manual
   else
