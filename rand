@@ -285,7 +285,7 @@ method_nawk() {
 
 # Function to generate numbers using 'perl'
 method_perl() {
-  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { print int(rand($mx-$mn))+$mn ; }'
+  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { printf "%.0f\n", int(rand($mx-$mn))+$mn ; }'
 }
 
 # Function to generate numbers using 'python'
