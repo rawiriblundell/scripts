@@ -231,21 +231,37 @@ method_manual() {
   # Some of these may fail, so we redirect stderr into the stream anyway.  Throw it all at the wall, see what sticks.
   else
     {
-      ps -aux
-      printf "%s" "$$"
-      top -n 1
-      date '+%H%M%S'
-      df -k 
-      printf "%s" "$$"
-      netstat -a
-      date '+%H%M%S'
-      vmstat -i
-      printf "%s" "$$"
       vmstat -s
-      date '+%H%M%S'
+      vmstat -c
+      pfstat
+      vmstat -i
+      netstat -s
+      nfsstat
+      netstat -m
+      netstat -in
+      mpstat
+      w
+      df
+      portstat
       iostat
-      printf "%s" "$$"
+      uptime
+      vmstat -f
+      vmstat
+      netstat -n
+      lsof
+      ps aux
+      ipcs -a
       pstat -afipSsT
+      pstat -p
+      pstat -S
+      pstat -v
+      pstat -x
+      pstat -t
+      last -n 50
+      arp -a
+      ripquery -nw 1 127.0.0.1
+      lpstat -t
+      tcpdump -c 5 -efvvx
     } 2>&1 | tr -d " " | tr -d "\n" | Fn_chrotate > /tmp/entropy
   fi
 
