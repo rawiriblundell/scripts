@@ -128,7 +128,7 @@ Fn_fill() {
     printf "%s\n" "${initFill}" > "${tmpDir}"/rnginit
 
     # Next, let's generate a list of what's missing
-    printf "%s\n" "${initFill}" "$(seq 1 "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
+    printf "%s\n" "${initFill}" "$(seq "${nMin}" "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
       
     # Interleave the two using 'paste' and dump them out
     paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
