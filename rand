@@ -20,9 +20,9 @@
 # Set the default variable states
 nMin=1
 #nMax=32767
-#nMax=4294967295           #2^32-1
+nMax=4294967295           #2^32-1
 #nMax=72057594037927935    #2^56-1
-nMax=9223372036854775807   #2^63-1
+#nMax=9223372036854775807   #2^63-1
 debug=false
 nCount=1
 repeat=false
@@ -35,8 +35,8 @@ trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 # Getopts
 while getopts "dhm:M:N:rz" Flags; do
   case "${Flags}" in
-    d)  debug="true";;
-    h)  printf "%s\n" "" "rand - generate random positive integers" \
+    (d)  debug="true";;
+    (h)  printf "%s\n" "" "rand - generate random positive integers" \
         "" "Optional Arguments:" \
         "-d [debug.  Tells you which processing method is used (Default:off)]" \
         "-h [help]" \
@@ -46,23 +46,23 @@ while getopts "dhm:M:N:rz" Flags; do
         "-r [repeat.  Output lines may be repeated (Default:off)]" \
         "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
         exit 0;;
-    m)  case "${OPTARG}" in
+    (m)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
           *)           nMin="${OPTARG}";;
         esac;;
-    M)  case "${OPTARG}" in
+    (M)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-M) '${OPTARG}' is not a number"; exit 1;;
           *)           nMax="${OPTARG}";;
         esac;;
-    N)  case "${OPTARG}" in
+    (N)  case "${OPTARG}" in
           *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-N) '${OPTARG}' is not a number"; exit 1;;
           *)           nCount="${OPTARG}";;
         esac;;
-    r)  repeat=true;;
-    z)  zeroPad=true;;
-    \?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage."
+    (r)  repeat=true;;
+    (z)  zeroPad=true;;
+    (\?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage."
          exit 1;;
-    :)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'"
+    (:)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'"
         exit 1;;
   esac
 done
