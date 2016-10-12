@@ -106,7 +106,9 @@ Fn_fill() {
   maxCount="${nCount}"
   
   # Multiply the original count to improve the chances of unique elements being selected
-  nCount=$(( nCount * 15 ))
+  if [ "${nCount}" -ge 100 ]; then
+    nCount=$(( nCount * 15 ))
+  fi
   
   # Call the method specified upon function invocation
   # Use Fn_unique to get an unsorted list of unique integers
@@ -285,7 +287,7 @@ method_manual() {
       # Seed some more data into the temporary entropy file, here we hash the PID
       printf "%s" "$$" | Fn_xor | tr -d " " | tr -d "\n" | "${crypt}"
       # Rotate the entropy, get the first 64 chars, xor it to the bottom of the temp file
-      printf "%s" "$(fold -b -w 64 /tmp/entropy | head -1 | Fn_xor)"
+      printf "%s" "$(fold -b -w 64 /tmp/entropy | head -n 1 | Fn_xor)"
       date '+%H%M%S' | Fn_xor | tr -d " " | tr -d "\n"
     } >> /tmp/entropy2
 
