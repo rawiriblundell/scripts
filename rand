@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2039
 # Purpose:     This script attempts to generate random integers through any means necessary
 # Author:      Rawiri Blundell
 # Copyright:   (c) 2016 - Beerware As-Is.  
@@ -35,35 +36,35 @@ trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 # Getopts
 while getopts "dhm:M:N:rz" Flags; do
   case "${Flags}" in
-    (d)  debug="true";;
-    (h)  printf "%s\n" "" "rand - generate random positive integers" \
-        "" "Optional Arguments:" \
-        "-d [debug.  Tells you which processing method is used (Default:off)]" \
-        "-h [help]" \
-        "-m [minimum number (Default:${nMin})]" \
-        "-M [maximum number (Default:${nMax})]" \
-        "-N [count.  Number of numbers (Default:${nCount})]" \
-        "-r [repeat.  Output lines may be repeated (Default:off)]" \
-        "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
-        exit 0;;
-    (m)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
-          *)           nMin="${OPTARG}";;
-        esac;;
-    (M)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-M) '${OPTARG}' is not a number"; exit 1;;
-          *)           nMax="${OPTARG}";;
-        esac;;
-    (N)  case "${OPTARG}" in
-          *[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-N) '${OPTARG}' is not a number"; exit 1;;
-          *)           nCount="${OPTARG}";;
-        esac;;
-    (r)  repeat=true;;
-    (z)  zeroPad=true;;
+    (d)   debug="true";;
+    (h)   printf "%s\n" "" "rand - generate random positive integers" \
+            "" "Optional Arguments:" \
+            "-d [debug.  Tells you which processing method is used (Default:off)]" \
+            "-h [help]" \
+            "-m [minimum number (Default:${nMin})]" \
+            "-M [maximum number (Default:${nMax})]" \
+            "-N [count.  Number of numbers (Default:${nCount})]" \
+            "-r [repeat.  Output lines may be repeated (Default:off)]" \
+            "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
+          exit 0;;
+    (m)   case "${OPTARG}" in
+            (*[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
+            (*)           nMin="${OPTARG}";;
+          esac;;
+    (M)   case "${OPTARG}" in
+            (*[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-M) '${OPTARG}' is not a number"; exit 1;;
+            (*)           nMax="${OPTARG}";;
+          esac;;
+    (N)   case "${OPTARG}" in
+            (*[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-N) '${OPTARG}' is not a number"; exit 1;;
+            (*)           nCount="${OPTARG}";;
+          esac;;
+    (r)   repeat=true;;
+    (z)   zeroPad=true;;
     (\?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage."
-         exit 1;;
-    (:)  echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'"
-        exit 1;;
+          exit 1;;
+    (:)   echo "[INFO] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'"
+          exit 1;;
   esac
 done
 
@@ -86,16 +87,6 @@ export nMin nMax nCount
 ################################################################################
 # Functions
 ################################################################################
-# Function to determine required bitlength
-Fn_bitlen() {
-  logn=1
-  nBitlen=0
-  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
-    logn=$(( logn * 2 ))
-    nBitlen=$(( nBitlen + 1 ))
-  done
-}
-
 # This function ensures equal distribution for methods that don't support it
 # If you request random numbers between 1 and 10, you should only get a complete
 # set of random numbers between 1 and 10.  This is disabled with '-r'
@@ -178,9 +169,13 @@ method_jot() {
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 }
 
-# Function to generate numbers using 'nawk'
+# Function to generate numbers using 'nawk' or 'mawk'
 method_nawk() {
-  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  if command -v mawk >/dev/null 2>&1; then
+    mawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  else
+    nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  fi
 }
 
 # Function to generate numbers using 'perl'
@@ -193,17 +188,32 @@ method_python() {
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
 }
 
-# Function to generate numbers using shell '$RANDOM' special variable
-# If the special variable isn't available, we fall back to a BSD-style
+# Function to generate numbers primarily using '$RANDOM' special variable
+# If the special variable isn't available (e.g. dash shell), we fall back to a BSD-style
 # Linear congruential generator (LCG) which we use to create our own '$RANDOM' variable
 # This way, the entire bitshifting formula remains the same
 # See: https://rosettacode.org/wiki/Linear_congruential_generator
 method_RANDOM() {
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
-  Fn_bitlen
+  # This is for the rightwards bitshift
+  logn=1
+  nBitlen=0
+  while [ $((nMax - nMin)) -gt "${logn}" ] && [ "${logn}" -gt 0 ]; do
+    logn=$(( logn * 2 ))
+    nBitlen=$(( nBitlen + 1 ))
+  done
 
   # We set the initial seed just in case we're using the LCG
-  rnSeed=$(date +%s)
+  # First we check if /dev/urandom is available.
+  # We used to have a method_urandom.  /dev/urandom can generate numbers fast
+  # But selecting numbers in ranges etc made for a fairly slow method
+  if [ -c /dev/urandom ] && command -v od >/dev/null 2>&1; then
+    # Get a string of bytes from /dev/urandom using od
+    rnSeed=$(od -N 4 -A n -t uL /dev/urandom | tr -d " ")
+  # Otherwise we can just seed it using the epoch
+  else
+    rnSeed=$(date +%s)
+  fi
 
   # Start a loop based on nCount.  I thought of other ways, but this works easier
   # and can be made more portable if testing proves the need to do so
@@ -269,55 +279,9 @@ method_shuf() {
   fi
 }
 
-# Function to generate random numbers using '/dev/urandom'
-method_urandom() {
-  # Check we have the required binaries
-  ErrCount=0
-  for Prog in od tr; do
-    if ! command -v "${Prog}" >/dev/null 2>&1; then
-      printf "%s\n" "[ERROR] rand: '${Prog}' is required but was not found."
-      ErrCount=$(( ErrCount + 1 ))
-    fi
-  done
-
-  # If any packages are missing, then ErrCount's going
-  # to be greater than 0, in which case, exit.
-  if [ "${ErrCount}" -gt 0 ]; then
-    exit 1
-  fi
-
-  # If performance is more important to you than functionality, uncomment this
-  # This will have the effect of limiting this mode to 56 bit integers
-  # Which makes '&& [ $((nRandShift + nMin)) -gt 0 ]' effectively redundant.
-  #if (( nMax > (2**56-1) )); then
-  #  nMax=$((2**56-1))
-  #fi
-
-  # We need to know the number of bits required to represent nMax (i.e. bitlength)
-  Fn_bitlen
-
-  # The lowest number of bytes needed to get at least n bits is the
-  # lowest multiple of 8 that is greater than or equal to n
-  nBytes=$(( (nBitlen + 7) / 8 ))
-
-  while [ "${nCount}" -gt 0 ]; do
-
-    # Get a string of bytes from /dev/urandom using od
-    nRand=$(od -N "${nBytes}" -A n -t uL /dev/urandom | tr -d " ")
-
-    # Now we bitshift to the right
-    nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
-
-    if [ $((nRandShift + nMin)) -le "${nMax}" ]; then
-      printf "%u\n" "$(( nRandShift + nMin ))"
-      nCount=$(( nCount - 1 ))
-    fi
-  done 
-}
-
 # Check if 'seq' is available, if not, provide a basic replacement function
 # Note: this has been stripped back to cater only for ascending sequences
-# A full, bash-friendly version is available at https://github.com/rawiriblundell
+# A fuller, bash-friendly version is available at https://github.com/rawiriblundell
 if ! command -v seq >/dev/null 2>&1; then
   seq() {
     i=$1
@@ -388,12 +352,11 @@ elif command -v gawk > /dev/null 2>&1; then
     Fn_fill method_gawk
   fi
   
-# No gawk?  Surely 'nawk' is hanging around?  Works very similar, but because we don't have systime()
-# we have to replicate it as a seed for srand().  Possibly less random or slower compared to gawk
-# More testing will need to be performed.
-elif command -v nawk > /dev/null 2>&1; then
+# No gawk?  Surely 'nawk' or 'mawk' is hanging around?  Works very similar, but 
+# because we don't have systime() we have to replicate it as a seed for srand().
+elif command -v nawk mawk > /dev/null 2>&1; then
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'nawk'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'nawk/mawk'"
   fi
   if [ "${repeat}" = true ]; then
     method_nawk
@@ -403,31 +366,17 @@ elif command -v nawk > /dev/null 2>&1; then
 
 # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
 
-# No perl, python, gawk or nawk?   We're *really* regressing now.  Let's try for a POSIX friendly shell solution
-# We start by checking if we have the RANDOM env var
-elif [ -n "${RANDOM}" ]; then
+# No shuf, jot, perl, python, gawk, nawk or mawk?  Fear not!  
+# Let's try for a POSIX friendly shell solution
+else
   if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'shell builtin RANDOM variable'"
+    printf "%s\n" "[DEBUG] rand: Method used is 'Skoruppa bitshift'"
   fi
   if [ "${repeat}" = true ]; then
     method_RANDOM
   else
     Fn_fill method_RANDOM
   fi
-
-# Next, we look for /dev/urandom.  This method can allow for bulk numbers with large ranges, but is slower than RANDOM
-elif [ -c /dev/urandom ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is '/dev/urandom'"
-  fi
-  if [ "${repeat}" = true ]; then
-    method_urandom
-  else
-    Fn_fill method_urandom
-  fi  
-
-# Ultimate failure
-else
-  printf "%s\n" "[ERROR] rand: I could not find a valid method with which to process your request."
-  exit 1
 fi | Fn_zeropad
+
+exit 0
