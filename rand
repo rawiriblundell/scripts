@@ -137,7 +137,7 @@ Fn_fill() {
   fi
 }
 
-# Linear congruential generator
+# Linear congruential generator, range 0 - 32767
 # See: https://rosettacode.org/wiki/Linear_congruential_generator
 # Usage: Fn_lcgrng (optional: number count, default:1) (optional: seed, default: epoch in seconds)
 Fn_lcgrng() {
@@ -153,8 +153,7 @@ Fn_lcgrng() {
     # BSD style modulus'ed against 2^31
     rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
     
-    # Microsoft style, perhaps a better match for $RANDOM 
-    # as it should range from 0 to 32767
+    # Microsoft style
     #rnSeed=$(( (214013 * rnSeed + 2531011) % 2147483648 ))
 
     # print the generated number as an unsigned int (i.e. positive decimal)
