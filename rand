@@ -229,7 +229,6 @@ method_RANDOM() {
       rnd=$(( rnd<<15|RANDOM ))
       # Keep stacking until the while loop exits
       rndBitlen=$(( rndBitlen + 15 ))
-
     done
     # Now bitshift it right
     nRandShift=$(( rnd>>(rndBitlen-nBitlen) ))
