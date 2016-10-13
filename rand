@@ -193,9 +193,10 @@ method_python() {
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
 }
 
-# Function to generate numbers using shell 'RANDOM' special variable
-# If the special variable isn't available, we fall back to
-# a BSD-style Linear congruential generator (LCG)
+# Function to generate numbers using shell '$RANDOM' special variable
+# If the special variable isn't available, we fall back to a BSD-style
+# Linear congruential generator (LCG) which we use to create our own '$RANDOM' variable
+# This way, the entire bitshifting formula remains the same
 # See: https://rosettacode.org/wiki/Linear_congruential_generator
 method_RANDOM() {
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
@@ -217,17 +218,18 @@ method_RANDOM() {
     rnd="${RANDOM}" # Capture one output sample of RANDOM
 
     while [ "${rndBitlen}" -lt "${nBitlen}" ]; do
+      # Stir the seed again just in case
+      rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
+      # If two invocations of RANDOM are the same, then we're working with a
+      # shell that does not support $RANDOM.  So we use the LCG and rotate $RANDOM
+      if [ "${RANDOM}" = "${RANDOM}" ]; then
+        RANDOM=$(printf "%u\n" "$(( rnSeed / 65536 ))")
+      fi
       # Bitshift RANDOM to the left to stack it i.e. 15 int -> 30 int -> 45 int etc
       rnd=$(( rnd<<15|RANDOM ))
       # Keep stacking until the while loop exits
       rndBitlen=$(( rndBitlen + 15 ))
-      rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
 
-      # If two invocations of RANDOM are the same, then we're working with a
-      # shell that does not support $RANDOM.  So we use the LCG and rotate RANDOM
-      if [ "${RANDOM}" = "${RANDOM}" ]; then
-        RANDOM=$(printf "%u\n" "$(( rnSeed / 65536 ))")
-      fi
     done
     # Now bitshift it right
     nRandShift=$(( rnd>>(rndBitlen-nBitlen) ))
