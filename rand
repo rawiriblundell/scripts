@@ -434,8 +434,8 @@ method_urandom() {
     # Now we bitshift to the right
     nRandShift=$(( nRand>>(nBytes * 8 - nBitlen) ))
 
-    if [ $((nRandShift + nMin)) -le "${nMax}" ] && [ $((nRandShift + nMin)) -gt 0 ]; then
-      printf "%s\n" "$(( nRandShift + nMin ))"
+    if [ $((nRandShift + nMin)) -le "${nMax}" ]; then
+      printf "%u\n" "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
   done 
