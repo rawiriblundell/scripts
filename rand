@@ -226,7 +226,7 @@ method_RANDOM() {
       # If two invocations of RANDOM are the same, then we're working with a
       # shell that does not support $RANDOM.  So we use the LCG and rotate RANDOM
       if [ "${RANDOM}" = "${RANDOM}" ]; then
-        RANDOM=$(printf "%u\n" "$(( rnSeed / 65536 ))")}
+        RANDOM=$(printf "%u\n" "$(( rnSeed / 65536 ))")
       fi
     done
     # Now bitshift it right
