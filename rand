@@ -143,7 +143,7 @@ Fn_unique() {
   if command -v awk >/dev/null 2>&1; then
     awk '!x[$0]++'
   # Otherwise we use a double sort.  This can be brutally slow at scale.
-  # We first prepend each line with a line number, then perform a unique short-name
+  # We first prepend each line with a line number, then perform a unique sort
   # on the second field (i.e. the generated integers), then we sort again on the
   # line numbers to return the randomness and use cut to print out the integers
   else
