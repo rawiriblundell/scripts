@@ -151,15 +151,15 @@ Fn_lcgrng() {
 
   while [ "${rnCount}" -gt 0 ]; do
     # BSD style modulus'ed against 2^31
-    rnSeed=$(((1103515245 * rnSeed + 12345) % 2147483648))
+    rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
     
     # Microsoft style, perhaps a better match for $RANDOM 
     # as it should range from 0 to 32767
-    #rnSeed=$(((214013 * rnSeed + 2531011) % 2147483648))
+    #rnSeed=$(( (214013 * rnSeed + 2531011) % 2147483648 ))
 
     # print the generated number as an unsigned int (i.e. positive decimal)
     # Divided by 2^16
-    printf "%u\n" "$(( rnSeed / 65536))"
+    printf "%u\n" "$(( rnSeed / 65536 ))"
 
     # Decrement the counter
     rnCount=$(( rnCount - 1 ))
