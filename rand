@@ -20,10 +20,6 @@
 ###############################################################################
 # Set the default variable states
 nMin=1
-#nMax=32767
-nMax=4294967295             #2^32-1
-#nMax=72057594037927935     #2^56-1
-#nMax=9223372036854775807   #2^63-1
 debug=false
 nCount=1
 repeat=false
@@ -32,6 +28,18 @@ tmpDir=/tmp/rand
 
 # In case we actually use $tmpDir, let's trap and delete it
 trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
+
+# Figure out our default nMax
+if printf "%d\n" "2147483648" 2>&1 | grep "out of range" >/dev/null 2>&1; then
+  nMax=2147483647             #2^31-1
+elif printf "%d\n" "9223372036854775808" 2>&1 | grep "out of range" >/dev/null 2>&1; then
+  nMax=9223372036854775807    #2^63-1
+else
+  nMax=32767                  #2^15-1, super-safe mode
+fi
+
+# And save it
+dnMax="${nMax}"
 
 # Getopts
 while getopts "dhm:M:N:rz" Flags; do
@@ -68,11 +76,10 @@ while getopts "dhm:M:N:rz" Flags; do
   esac
 done
 
-# Easter Egg for now, might be the start of a method for auto-finding nMax
-# Currently this checks for the 64bit Long Int limit used in bash and others
+# Easter Egg
 if printf "%d\n" "${nMax}" 2>&1 | grep "out of range" >/dev/null 2>&1; then
   printf "%s\n" "[INFO] rand: Come on now, stop being silly." \
-    "My upper boundary is *sometimes* 9223372036854775807."
+    "My upper boundary is *sometimes* '${dnMax}'."
   exit 1
 fi
 
