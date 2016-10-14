@@ -30,9 +30,9 @@ tmpDir=/tmp/rand
 trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 
 # Figure out our default nMax
-if printf "%d\n" "2147483648" 2>&1 | grep "out of range" >/dev/null 2>&1; then
+if printf "%d\n" "2147483648" 2>&1 | egrep "out of range|too large" >/dev/null 2>&1; then
   nMax=2147483647             #2^31-1
-elif printf "%d\n" "9223372036854775808" 2>&1 | grep "out of range" >/dev/null 2>&1; then
+elif printf "%d\n" "9223372036854775808" 2>&1 | egrep "out of range|too large" >/dev/null 2>&1; then
   nMax=9223372036854775807    #2^63-1
 else
   nMax=32767                  #2^15-1, super-safe mode
@@ -77,7 +77,7 @@ while getopts "dhm:M:N:rz" Flags; do
 done
 
 # Easter Egg
-if printf "%d\n" "${nMax}" 2>&1 | grep "out of range" >/dev/null 2>&1; then
+if printf "%d\n" "${nMax}" 2>&1 | egrep "out of range|too large" >/dev/null 2>&1; then
   printf "%s\n" "[INFO] rand: Come on now, stop being silly." \
     "My upper boundary is *sometimes* '${dnMax}'."
   exit 1
