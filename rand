@@ -68,16 +68,17 @@ while getopts "dhm:M:N:rz" Flags; do
   esac
 done
 
-# Double check that we haven't done something silly like have nMax less than nMin
-if [ "${nMin}" -ge "${nMax}" ]; then
-  printf "%s\n" "[ERROR] rand: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
+# Easter Egg for now, might be the start of a method for auto-finding nMax
+# Currently this checks for the 64bit Long Int limit used in bash and others
+if printf "%d\n" "${nMax}" 2>&1 | grep "out of range" >/dev/null 2>&1; then
+  printf "%s\n" "[INFO] rand: Come on now, stop being silly." \
+    "My upper boundary is *sometimes* 9223372036854775807."
   exit 1
 fi
 
-# Easter Egg
-if [ "${nMax}" -gt 9223372036854775807 ]; then
-  printf "%s\n" "[INFO] rand: Come on now, stop being silly." \
-    "My upper boundary is *sometimes* 9223372036854775807."
+# Double check that we haven't done something silly like have nMax less than nMin
+if [ "${nMin}" -ge "${nMax}" ]; then
+  printf "%s\n" "[ERROR] rand: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
   exit 1
 fi
 
