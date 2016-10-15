@@ -339,7 +339,8 @@ elif command -v perl > /dev/null 2>&1; then
   fi
 
 # Otherwise, we try python
-elif command -v python > /dev/null 2>&1; then
+# We need to ensure that /dev/urandom is available, as python sources it
+elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'python'"
   fi
