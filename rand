@@ -376,8 +376,8 @@ elif command -v nawk mawk > /dev/null 2>&1; then
 # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
 
 # No shuf, jot, perl, python, gawk, nawk or mawk?  Fear not!  
-# Let's try for a POSIX friendly shell solution
-else
+# Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
+elif [ "${nMax}" -lt 1152921504606846975 ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'Skoruppa bitshift'"
   fi
@@ -386,6 +386,11 @@ else
   else
     Fn_fill method_RANDOM
   fi
+  
+# Provide an outright failure condition just in case
+else
+  printf "%s\n" "[ERROR] rand: Unable to find a suitable method to generate a random integer"
+  exit 1
 fi | Fn_zeropad
 
 exit 0
