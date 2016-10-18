@@ -107,7 +107,7 @@ Fn_fill() {
   
   # Multiply the original count to improve the chances of unique elements being selected
   if [ "${nCount}" -ge 100 ]; then
-    nCount=$(( nCount * 15 ))
+    nCount=$(( nCount * 2 ))
   fi
   
   # Call the method specified upon function invocation
