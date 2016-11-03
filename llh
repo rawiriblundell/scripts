@@ -1,0 +1,53 @@
+#!/bin/sh
+# A reinterpretation of 'llh' from the hpuxtools toolset (hpux.ch)
+# This provides human readable 'ls' output for systems
+# whose version of 'ls' does not have the '-h' option
+# Author(s):  dave@hpux.ch (circa 2012), Rawiri Blundell (2016)
+
+# Conversion function from http://unix.stackexchange.com/a/98790
+# Usage: bytestohuman [number to convert] [pad or not yes/no] [base 1000/1024]
+bytestohuman() {
+  # converts a byte count to a human readable format in IEC binary notation (base-1024),
+  # rounded to two decimal places for anything larger than a byte. 
+  # switchable to padded format and base-1000 if desired.
+  local L_BYTES="${1:-0}"
+  local L_PAD="${2:-no}"
+  local L_BASE="${3:-1024}"
+  awk -v bytes="${L_BYTES}" -v pad="${L_PAD}" -v base="${L_BASE}" 'function human(x, pad, base) {
+   if(base!=1024)base=1000
+   basesuf=(base==1024)?"iB":"B"
+
+   s="BKMGTEPYZ"
+   while (x>=base && length(s)>1)
+         {x/=base; s=substr(s,2)}
+   s=substr(s,1,1)
+
+   xf=(pad=="yes") ? ((s=="B")?"%5d   ":"%8.2f") : ((s=="B")?"%d":"%.2f")
+   s=(s!="B") ? (s basesuf) : ((pad=="no") ? s : ((basesuf=="iB")?(s "  "):(s " ")))
+
+   return sprintf( (xf " %s\n"), x, s)
+  }
+  BEGIN{print human(bytes, pad, base)}'
+  return $?
+}
+
+# Print out the total line
+ls -l | head -n 1
+
+# Read each line of 'ls -l', excluding the total line
+ls -l | grep -v "total" | while read -r line; do
+  # Get the size of the file
+  size=$(echo "${line}" | awk '{print $5}')
+  
+  # Convert it to human readable
+  newSize=$(bytestohuman ${size} no 1024)
+  
+  # Grab the filename from the $9th field onwards
+  # This caters for files with spaces
+  fileName=$(echo "${line}" | awk '{print substr($0, index($0,$9))}')
+  
+  # Echo the line into awk, format it nicely and insert our substitutions
+  echo "${line}" | awk -v size="${newSize}" -v file="${fileName}" '{printf "%-11s %+2s %-10s %-10s %+11s %s %02d %-5s %s\n",$1,$2,$3,$4,size,$6,$7,$8,file}'
+done
+
+exit 0
