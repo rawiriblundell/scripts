@@ -131,6 +131,19 @@ Fn_fill() {
 
     # Next, let's generate a list of what's missing
     printf "%s\n" "${initFill}" "$(seq "${nMin}" "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
+    
+    # Split up rngdiff on a 70/30 ratio and rotate the two segments
+    # This reduces the opportunity for recognisable patterns to creep in
+    # We start a subshell
+    #(
+      # Now we cd to the tmpDir
+    #  cd "${tmpDir}" || exit 1
+      # We split at the number of lines calculated as 70% of the total
+      # 'split' will generate two files: xaa (70%) and xab (the remainder i.e. 30%)
+    #  split -l $(( $(wc -l < "${tmpDir}"/rngdiff) * 70 / 100 )) | "${tmpDir}"/rngdiff
+      # Now we use 'tac' to invert both files and merge them back together
+    #  tac xab xaa > "${tmpDir}"/rngdiff
+    #)
       
     # Interleave the two using 'paste' and dump them out
     paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
