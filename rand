@@ -195,6 +195,11 @@ method_perl() {
 # Function to generate numbers using 'python'
 method_python() {
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
+  
+  # The alternative method below was tested but abandoned for now
+  # It fails with a Memory Error if nMax is too high
+  # I'll leave it here for prosperity though (note: it may require nMax = nMax + 1)
+  #python -c "import random; numlist=list(range(${nMin},${nMax})); random.shuffle(numlist); print '\n'.join([str(int) for int in numlist])"
 }
 
 # Function to generate numbers primarily using '$RANDOM' special variable
