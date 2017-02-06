@@ -4,7 +4,29 @@
 # Date:     20150624
 # Requires: POSIX compatible shell e.g. bash or ksh
 
-# Usage:    ./deploysolsudoers /path/to/new/sudoers
+# Usage:    
+# Copy this file and the new sudoers file to your target host(s)
+# Then run: ./deploysolsudoers /path/to/new/sudoers
+
+# Example fleet deployment:
+# deploysolsudoers and new.sudoers are in a directory: ~/solsudo
+# We have ssh keys and sudo setup already on all of the target hosts.
+# First copy the files over:
+# for host in $(<serverlist); do scp ~/solsudo/* $host:; done
+
+# Next, remotely run the deploy script with sudo rights like so:
+#  for host in $(<serverlist); do echo "+++ $host" && ssh -t $host "echo 'mysupersecretpassword' | sudo -S ./deploysolsudoers new.sudoers"; done
+
+# Note the leading blank space in the command to reduce the chance of this
+# entering your shell history.  You can secure this further by putting your
+# password into a dotfile that's chmod'd to 400 and reading it in like so:
+# ... ssh -t $host "echo $(<~/.mypasswordfile) | sudo -S ...
+
+# Legacy note: 
+# This does not cater for Solaris systems may be set up with SRM.
+# For such systems, you need to use the 'limadm' command like so:
+# some-solaris-host{root}: limadm set services.flag.su=set someuser
+################################################################################
 
 PATH=/usr/xpg6/bin:/usr/xpg4/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/csw/bin:/opt/csw/sbin:/opt/sfw/bin:/opt/sfw/sbin:/usr/sfw/bin:/usr/sfw/sbin:$PATH
 export PATH
