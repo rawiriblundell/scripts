@@ -1,0 +1,125 @@
+#!/bin/bash
+# Purpose:  To aid in the deployment of sudoers files on Solaris hosts
+# Author:   Rawiri Blundell, DATACOM
+# Date:     20150624
+# Requires: POSIX compatible shell e.g. bash or ksh
+
+# Usage:    ./deploysolsudoers /path/to/new/sudoers
+
+PATH=/usr/xpg6/bin:/usr/xpg4/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/csw/bin:/opt/csw/sbin:/opt/sfw/bin:/opt/sfw/sbin:/usr/sfw/bin:/usr/sfw/sbin:$PATH
+export PATH
+
+# Space separated list of potential sudoers locations
+sudoFilelist="/etc/sudoers /usr/local/etc/sudoers /opt/sfw/etc/sudoers"
+
+########## NOTE ##########
+# I looked for reliable ways to do this, but the lack of ubiquitos lsof
+# and unreliability or performance issues with pfiles and fuser
+# led me to take certain less desirable design choices
+
+# First check that we're actually on Solaris
+if [[ ! $(uname) = "SunOS" ]]; then
+  printf "%s\n" "ERROR: This script is intended to run on Solaris only, this doesn't apppear to be a Solaris host!"
+  exit 1
+fi
+
+# And check that we're root
+if [[ ! -w / ]]; then
+  printf "%s\n" "ERROR: This script must be run as root or with appropriate sudo rights."
+  exit 1
+fi
+
+# Check that $1 isn't empty and actually exists
+if [[ -z $1 ]]; then
+  printf "%s\n" "ERROR: You need to explicitly tell me where the new sudoers file is." \
+    "Usage: ./deploysolsudoers /path/to/new/sudoers"
+  exit 1
+elif [[ ! -f $1 ]]; then
+  printf "%s\n" "ERROR: I can't seem to access the file '$1', are you sure it exists?"
+  exit 1
+fi
+
+# Figure out the full path for $1
+newSudoFile=$(cd "$(dirname "$1")"; pwd)/$(basename "$1")
+
+# Now we check that 'sudo' is available.  We don't want to run this on hosts that don't have it!
+if ! command -v sudo > /dev/null 2>&1; then
+  printf "%s\n" "ERROR: 'sudo' does not appear to be on this host."
+  exit 1
+fi
+
+# Next we check that at least one sudoers file is present
+# We check each location and increment a counter
+fileCount=0
+for file in ${sudoFilelist}; do
+  if [[ -f "${file}" ]]; then
+    fileCount=$(( fileCount + 1 ))
+  fi
+done
+
+# If the counter remains at 0, then no files were found.  Error out.
+if (( fileCount = 0 )); then
+  printf "%s\n" "ERROR: could not locate any 'sudoers' file on this host."
+  exit 1
+fi
+
+# Next we check if visudo is available, if so, we can put in a verification step here
+# the file SHOULD be verified before this point anyway, so this is an extra safety check
+if command -v visudo >/dev/null 2>&1; then
+  if ! visudo -c -f "$1" >/dev/null 2>&1; then
+    printf "%s\n" "ERROR: It appears there's an issue with the formatting of the file.  visudo found this:"
+	  visudo -c -f "$1"
+    exit 1
+  fi
+# If visudo isn't here, we can't guarantee safety, so we kick out
+else
+  printf "%s\n" "ERROR: 'visudo' does not appear to be on this host."
+  exit 1
+fi
+
+# Now we ensure the permissions on the incoming file are correct before we install it
+chown root:root "$1"
+chmod 440 "$1"
+
+# Now we run across each potential file location
+# We do this as there is no clear way to determine which file is actually 'live'
+# And any extra sudoers files will not cause any harm
+for sudoFile in ${sudoFilelist}; do
+
+  # Only act if the file exists, this prevents needless depositing of the sudoers file
+  if [[ -f "${sudoFile}" ]]; then
+
+    # If the file is open, then we need to avoid the collision
+    # We use this horrible way because pgrep on Solaris proved unreliable
+    if ps -ef | grep sudoers | grep -v grep | grep -v deploysolsudoers >/dev/null 2>&1; then
+      printf "%s\n" "ERROR: It appears that the sudoers file is currently in use:"
+      ps -ef | grep sudoers | grep -v grep | grep -v deploysolsudoers
+      exit 1
+    fi
+
+    # Otherwise we can continue.  Back up the current file
+    cp "${sudoFile}"{,."$(date +%Y%m%d)"}
+
+    # Copy the new file in
+    cp "$1" "${sudoFile}"
+
+    # Team Leader's Paranoia: check sudoers after the move, if something's wrong, roll back
+    if ! visudo -c -f "${sudoFile}" >/dev/null 2>&1; then
+      cp "${sudoFile}.$(date +%Y%m%d)" "${sudoFile}"
+      chown root:root "${sudoFile}"
+      chmod 440 "${sudoFile}"
+      printf "%s\n" "ERROR: 'visudo' found an error after installing the new sudoers file." \
+        "I have attempted to roll back to the previous version."
+      exit 1
+    fi
+
+    # Exit note
+    printf "%s\n" "SUCCESS: the new sudoers file was installed from '${newSudoFile}' to '${sudoFile}'." \
+      "The old sudoers file was backed up to '${sudoFile}.$(date +%Y%m%d)'"
+  fi
+done
+
+# Remove the new sudoers file as we don't want others potentially nosing through it
+rm "$1"
+
+exit 0
