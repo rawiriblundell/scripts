@@ -23,7 +23,7 @@
 # ... ssh -t $host "echo $(<~/.mypasswordfile) | sudo -S ...
 
 # Legacy note: 
-# This does not cater for Solaris systems may be set up with SRM.
+# This does not cater for Solaris systems that may be set up with SRM.
 # For such systems, you need to use the 'limadm' command like so:
 # some-solaris-host{root}: limadm set services.flag.su=set someuser
 ################################################################################
