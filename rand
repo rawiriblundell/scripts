@@ -331,9 +331,8 @@ if command -v shuf > /dev/null 2>&1; then
   method_shuf
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
-# 'jot' is theoretically limited to 2^32-1 by the arc4random algorithm
-# In testing it seems to  be limited somewhere between 2^31-1 and 2^32-1
-# so we set a limit based on the former figure of 2^31-1
+# 'jot' is limited to 2^31-1 by the arc4random algorithm
+# so we also test for an nMax limit based on that
 elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
   if [ "${debug}" = true ]; then
     printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
