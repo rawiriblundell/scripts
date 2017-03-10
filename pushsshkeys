@@ -1,0 +1,98 @@
+#!/bin/bash
+# Purpose: This is a wrapper script for expect.sshkeys
+#          This does some pre-req checks and distributes sshkeys
+#	         to a List of servers in a required file: "serverList"
+
+# Author:  Rawiri Blundell, Datacom
+# Date:    June 2014
+
+# Variables
+serverList=serverlist
+adminPwd="${PWD}/.pwdfiler"
+compareStrings=1
+
+# Check that $serverList exists
+if [ ! -f "${serverList}" ]; then
+  echo "File '${serverList}' is required and doesn't exist where I expect it"
+  echo " Please ensure this file is present in ${PWD} "
+  exit 1
+fi
+
+# Greet
+echo "========================================"
+echo -e "\tYou are running ${0##*/}"
+echo "========================================"
+echo -e "\nThis script attempts to distribute your sshkey across"
+echo " all the servers in the file '${serverList}'"
+echo -e "\nThis assumes you have access on all servers listed, using the same password"
+echo "If not, consider exiting and sorting that out."
+read -rp "Press [Enter] to continue or Ctrl-C to exit"
+
+#### SSH Stuff ####
+# Check for sshkey and if one isn't found, generate one
+if [[ ! -f ~/.ssh/id_rsa.pub ]]; then
+	echo "I could not find an sshkey, let me generate one for you..."
+	ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
+fi
+
+# Get ~/.ssh/known_hosts up to scratch, this should prevent the need to depend on expect
+# to take care of interacting with remote hosts for fingerprinting
+
+# First, notify the user
+echo "Please wait a few minutes while I perform maintenance on your known_hosts file, this can take a while..."
+
+# Backup the current known_hosts file
+cp ~/.ssh/known_hosts{,.old}
+
+# Generate a temporary known_hosts file
+ssh-keyscan -t rsa,dsa -f "${serverList}" > ~/.ssh/known_hosts.new
+
+# Because the serverlist file can be incomplete for whatever reason,
+# instead of leaving it there, we now uniq the two files into one
+cat ~/.ssh/known_hosts.old ~/.ssh/known_hosts.new | sort | uniq -u > ~/.ssh/known_hosts
+
+# Double check perms
+chmod 600 ~/.ssh/known_hosts
+
+#### /SSH Stuff ####
+
+# Remove any existing pwdfiler files and generate a new one
+rm -f "${adminPwd}"
+
+# Prompt for the authentication password twice
+while [[ "${compareStrings}" -gt "0" ]]; do
+  echo "================================"
+  echo -ne "Please enter your password for authenticating and press [Enter]: "
+  read -rs pwdin1
+  echo -ne "\nPlease confirm your password and press [Enter]: "
+  read -rs pwdin2
+
+  # Compare the two, if they don't match, try again
+  if [[ "${pwdin1}" != "${pwdin2}" ]]; then
+    echo ""
+    read -rp "The passwords entered do not match.  Press [Enter] to start again."
+    compareStrings=$(( compareStrings + 1 ))
+  else
+    # If the passwords match, write it to .pwdfiler
+    echo "${pwdin1}" > "${adminPwd}"
+    # And give the condition to exit the while loop
+    compareStrings=0
+  fi
+done
+
+# Secure pwdfiler
+chmod 600 "${adminPwd}"
+
+# Heavy Lifting
+for host in $(<"${serverList}"); do
+  # We now call an expect script that essentially automates the following
+  #ssh-copy-id -i /home/$user/.ssh/id_rsa.pub "${host}"
+	./expect.sshkeys "${host}";
+
+  # Alternative method that might be figured out:
+  #cat ~/.ssh/id_rsa.pub | ssh $user@$host "cat - >> .ssh/authorized_keys"
+done
+
+# Cleanup
+# Remove any pwdfiler files
+#rm -f "${adminPwd}"
