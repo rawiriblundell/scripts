@@ -1,0 +1,138 @@
+#!/usr/bin/expect -f
+set timeout 5
+
+# Server is the first argument after the command e.g. expect.sshkeys server1
+set server [lindex $argv 0]
+
+# Ideally this would be [lindex $argv 1] e.g. expect.sshkeys server1 username
+# But for most times I've used this, $(whoami) is appropriate
+set user [exec whoami]
+
+# Reads password from file 'pwdfiler' which is set to u+r
+# It's slightly more secure this way
+set filer [open "/home/$user/bin/.pwdfiler" r]
+set pass [read $filer]
+
+# Log file picks up send_log and send_user, use puts to echo to user without logging
+log_file log.sshkeys
+
+# Set the list of potential prompt characters, called with -re $prompt
+set prompt "\[>%\\$#\] "
+
+# Open initial connection to probe for a couple of things...
+spawn ssh $server
+expect {
+	# Set default action
+	default {
+		send_user "INFO: Unable to make initial connection to $server\n"
+		exit 1
+	}
+	# RSA warnings first, more reliable than expecting yes/no
+	-re "RSA key fingerprint" {
+		send "yes\r"
+		exp_continue
+	}
+	# Expired entries in ~/.ssh/known_hosts
+	# Theoretical code below (should work, haven't had a test case yet)
+	-re "Offending key" {
+		spawn ssh-keygen -R $server
+		exp_continue
+	}
+	# If we get a prompt character, everything went better than expected,
+	# and we won't require an expensive second connection as below
+	-re $prompt {
+		send exit
+		exit 0
+	}
+	# Unlikely, but we might get a password prompt here.  This means there's probably no key so we send Ctrl+C
+  # and invoke ssh-copy-id
+  "*?assword:*" {
+    send \003
+    spawn ssh-copy-id -i /home/$user/.ssh/id_rsa.pub $server
+    expect {
+      # Set default behaviour
+      default {
+        send_user "WARN: Unable to complete operation on $server while running ssh-copy-id\n"
+        exit 1
+      }
+      # More likely that by this point we're going to get a password prompt
+      "*?assword:*" {
+        send "$pass\r"
+        expect {
+          # Set default behaviour
+          default {
+            send_user "WARN: Unable to complete operation on $server after sending password\n"
+            exit 1
+          }
+          # Expect a success
+          "*expecting." {
+            send_user "SUCCESS: sshkeys setup on $server\n"
+            exit 0
+          }
+          # Or expect a failure, in this case another password prompt indicating auth failure
+          "*?assword:*" {
+            send \003
+            send_user "WARN: Unable to complete operation on $server.  Likely an authentication failure\n"
+            exit 1
+          }
+        }
+      }
+    }
+	}
+}
+
+# Now that the above is sorted, let's open another connection to check if a key exists
+spawn ssh $server
+expect {
+	# Set default action
+	default {
+		send_user "INFO: Unable to make second connection to $server\n"
+		exit 1
+	}
+	# RSA warnings again, just in case the previous expect dealt with an expired entry
+  -re "RSA key fingerprint" {
+    send "yes\r"
+    exp_continue
+  }
+	# If we get a prompt character, we assume the key is setup and exit
+	-re $prompt {
+		send exit
+		exit 0
+	}
+	# If we get a password prompt, probably there's no key so we send Ctrl+C
+	# and invoke ssh-copy-id
+	"*?assword:*" {
+		send \003
+		spawn ssh-copy-id -i /home/$user/.ssh/id_rsa.pub $server
+  	expect {
+  		# Set default behaviour
+			default {
+				send_user "WARN: Unable to complete operation on $server while running ssh-copy-id\n"
+				exit 1
+			}
+			# More likely that by this point we're going to get a password prompt
+			"*?assword:*" {
+      	send "$pass\r"
+      	expect {
+					# Set default behaviour
+					default	{
+						send_user "WARN: Unable to complete operation on $server after sending password\n"
+						exit 1
+					}
+        	# Expect a success
+        	"*expecting." {
+          	send_user "SUCCESS: sshkeys setup on $server\n"
+						exit 0
+        	}
+        	# Or expect a failure, in this case another password prompt indicating auth failure
+        	"*?assword:*" {
+        		send \003
+        		send_user "WARN: Unable to complete operation on $server.  Likely an authentication failure\n"
+        		exit 1
+        	}
+				}
+			}
+		}
+	}
+}
+exit 0
