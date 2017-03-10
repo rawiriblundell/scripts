@@ -15,7 +15,7 @@ Here's where I keep various scripts that I've written and am able to share.  Man
 * install-shellcheck - This script performs a baseline setup of nginx and php, and downloads and sets up shellcheck and its webui.  Basically, it mostly/entirely automates setting up your own hosted web based version of shellcheck.net.  Shellcheck is brilliant, you should use it.
 * llh - A reinterpretation of a tool by the same name from the hpuxtools toolset.  Provides human readable 'ls' for systems that don't have a version of 'ls' with the '-h' option
 * lottocheck - Basically I was having fun with 'genlotto' and the 'nzlottoresults' data set.  See: http://www.rawiriblundell.com/?p=1534
-* nzlottoresults - The actual first 1546 draws from NZ's Lotto
+* nzlottoresults - The history of drawn numbers from NZ's Lotto.  1604 draws as of March 2017, I might update it now and then.
 * rand - I needed to generate a random integer.  This script is me taking that requirement a bit too far.  I have a bit of pride for this one.
 * pushsshkeys - This script is the wrapper for expect.sshkeys.  Cleared for release by my employer.
 * rpm2pkg - I use 'fpm' to generate packages.  Its Solaris support is borked, so as a workaround I found an rpm2pkg script.  I figured I'd generate the rpm from fpm, then use rpm2pkg to convert it.  The script I found was borked too.  I rewrote it in bash and made it better.
