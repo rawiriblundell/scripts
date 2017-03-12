@@ -1,0 +1,286 @@
+#!/bin/bash
+# Purpose:     This script attempts to check and rate passwords/passphrases
+# Author:      Rawiri Blundell
+# Copyright:   (c) 2016 - Beerware As-Is.
+#              No warranty or liability, but some attribution would be nice if it works well
+#              for you or you derive your own code.  Just as I've attributed inspiration below.
+# Date:        20170312
+################################################################################
+
+# Space separated list of dictionaries to check against
+dictionaryList="/usr/dict/words /usr/share/dict/words"
+
+# This script checks for 3 of the following complexity categories:
+# Uppercase, Lowercase, Numeric, Symbols, No spaces, No dicts
+# We start with a credential score to be subtracted from
+CredCount=4
+
+# Read password in, if it's blank, prompt the user
+if [ -z "${*}" ]; then
+  read -resp $'Please enter the password/phrase you would like checked:\n' PwdIn
+else
+  # Otherwise, whatever is fed in is the password to check
+  PwdIn="${*}"
+fi
+
+################################################################################
+# Functions
+################################################################################
+# Function to split the salt out of a password hash
+getsalt() {
+  # Some password hashes have 'rounds=n', we cater for those
+  if echo "$1" | grep "rounds=" >/dev/null 2>&1; then
+    pwdSalt=$(echo "$1" | awk -F "$" '{print $4}')
+    pwdRounds=$(echo "$1" | awk -F "$" '{print $3}' | cut -d "=" -f2)
+  # Otherwise, we search for the more common $[algo]$[salt]$[hash] method
+  elif echo "$1" | grep "^$" >/dev/null 2>&1; then
+    pwdSalt=$(echo "$1" | awk -F "$" '{print $3}')
+  # Otherwise, we may be dealing with ancient DES style hashes
+  else
+    pwdSalt=$(echo "$1" | fold -w 2 | head -n 1)
+  fi
+}
+
+# Get the algorithm.  Can't/won't support: blowfish, others not listed
+getalgo() {
+  # If it doesn't start with a $, then it's probably plain unix crypt
+  if ! echo "$1" | grep "^\$" >/dev/null 2>&1; then
+    pwdAlgo=
+    passlibAlgo=des_crypt
+    mkpasswdAlgo=des
+  # MD5 hashes start with $1
+  elif echo "$1" | grep "^\$1" >/dev/null 2>&1; then
+    # shellcheck disable=SC2016
+    pwdAlgo='$1'
+    passlibAlgo=md5_crypt
+    mkpasswdAlgo=md5
+  # Sun's MD5 hashes start with $md5 (Solaris supports both md5 types)
+  elif echo "$1" | grep "^\$md5" >/dev/null 2>&1; then
+    # shellcheck disable=SC2016
+    pwdAlgo='$md5'
+    passlibAlgo=sun_md5_crypt
+    mkpasswdAlgo=
+  # SHA256 hashes start with $5
+  elif echo "$1" | grep "^\$5" >/dev/null 2>&1; then
+    # shellcheck disable=SC2016
+    pwdAlgo='$5'
+    passlibAlgo=sha256_crypt
+    mkpasswdAlgo=sha-256
+  # SHA512 start with $6
+  elif echo "$1" | grep "^\$6" >/dev/null 2>&1; then
+    # shellcheck disable=SC2016
+    pwdAlgo='$6'
+    passlibAlgo=sha512_crypt
+    mkpasswdAlgo=sha-512
+  fi
+}
+
+# Function that attempts to reverse engineer a password hash
+# Essentially after getalgo() and getsalt() have split out what we need
+# We hash the input password with those and generate a new hashed password
+# This can then be used to compare against e.g. opasswd files
+hashtest() {
+  # First test if we have mkpasswd, we also test that mkdpasswdAlgo isn't blank
+  # If it is, then chances are we're dealing with a sun-md5 hash, we leave that for passlib
+  if command -v mkpasswd >/dev/null 2>&1 && [ -n "${mkpasswdAlgo}" ]; then
+    if [ -n "${pwdRounds}" ]; then
+      mkpasswd -S "${pwdSalt}" -m "${mkpasswdAlgo}" -R "${pwdRounds}" "${pwdIn}"
+    else
+      mkpasswd -S "${pwdSalt}" -m "${mkpasswdAlgo}" "${pwdIn}"
+    fi
+
+  # Next we take a look for python's passlib with a dummy run
+  elif python -c "from passlib.hash import sha512_crypt; print sha512_crypt.encrypt('string', salt='JEXM3UjFGf', rounds=1000)" >/dev/null 2>&1; then
+    # Figure out our module mapping based on the algorithm
+    if [ -n "${pwdRounds}" ]; then
+      python -c "from passlib.hash import ${passlibAlgo}; print ${passlibAlgo}.encrypt('${pwdIn}', salt='${pwdSalt}', rounds=${pwdRounds})"
+    else
+      python -c "from passlib.hash import ${passlibAlgo}; print ${passlibAlgo}.encrypt('${pwdIn}', salt='${pwdSalt}')"
+    fi
+
+  # Otherwise, we try python's in-built crypt module (no sun-md5)
+  elif command -v python >/dev/null 2>&1 && [ -n "${mkpasswdAlgo}" ]; then
+    if [ -n "${pwdRounds}" ]; then
+      python -c "import crypt; print crypt.crypt('${pwdIn}', '\$${pwdAlgo}\$rounds=${pwdRounds}\$${pwdSalt}\$')"
+    elif [ -n "${pwdAlgo}" ]; then
+      python -c "import crypt; print crypt.crypt('${pwdIn}', '\$${pwdAlgo}\$${pwdSalt}\$')"
+    else
+      python -c "import crypt; print crypt.crypt('${pwdIn}', '${pwdSalt}')"
+    fi
+
+  # Next we try perl (no sun-md5)
+  elif command -v perl >/dev/null 2>&1 && [ -n "${mkpasswdAlgo}" ]; then
+    # We need to export variables for perl to suck up
+    export pwdIn pwdAlgo pwdRounds pwdSalt
+    if [ -n "${pwdRounds}" ]; then
+      perl -le 'print crypt("$ENV{pwdIn}","\$$ENV{pwdAlgo}\$rounds=$ENV{pwdRounds}\$$ENV{pwdSalt}\$")'
+    elif [ -n "${pwdAlgo}" ]; then
+      perl -le 'print crypt("$ENV{pwdIn}","\$$ENV{pwdAlgo}\$$ENV{pwdSalt}\$")'
+    else
+      perl -le 'print crypt("$ENV{pwdIn}","$ENV{pwdSalt}")'
+    fi
+
+  else
+    printf "%s\n" "[ERROR] pwstrength: No method was found for hashing passwords"
+    return 1
+  fi
+}
+
+################################################################################
+# Start cycling through each complexity requirement
+# We instantly fail for short passwords
+if [ "${#PwdIn}" -lt "8" ]; then
+  printf "%s\n" "[FAIL] pwstrength: Password must have a minimum of 8 characters.  Further testing stopped.  (Score = 0)"
+  exit 1
+else
+  printf "%s\n" "[OK]: Character count"
+fi
+
+# And we instantly fail for passwords with spaces in them
+# Note: I have no problem with spaces in a password, however, see the following:
+# https://www.quora.com/Does-adding-a-space-in-the-middle-of-a-password-make-it-more-secure-less-hackable
+if echo "${PwdIn}" | grep " " >/dev/null 2>&1; then
+  printf "%s\n" "[FAIL] pwstrength: Password cannot contain spaces.  Further testing stopped.  (Score = 0)"
+  exit 1
+else
+  printf "%s\n" "[OK]: No spaces found"
+fi
+
+# Dictionary checks
+for dictFile in ${dictionaryList}; do
+  if grep -q -m 1 -h -f "${dictFile}" <<< "^${PwdIn}" 2>/dev/null; then
+    printf "%s\n" "[FAIL] pwstrength: Password appears to contain a dictionary word.  Further testing stopped.  (Score = 0)"
+    exit 1
+  else
+    printf "%s\n" "[OK]: Doesn't seem to match any dictionary words"
+  fi
+done
+
+# Old passwords (Linux)
+if [ -r /etc/security/opasswd ]; then
+  for hashPwd in $(cut -d ":" -f4- /etc/security/opasswd | tr "," "\n"); do
+    # Figure out its algorithm
+    getalgo "${hashPwd}"
+
+    # Figure out its salt
+    getsalt "${hashPwd}"
+
+    # Use the hash and salt with the provided password
+    # and then finally compare the two
+    if [ "$(hashtest)" = "${hashPwd}" ]; then
+      printf "%s\n" "[FAIL] pwstrength: Password appears to have been previously used.  Further testing stopped.  (Score = 0)"
+      exit 1
+    fi
+  done
+fi
+
+# Old passwords (Solaris)
+if [ -r /etc/security/passhistory ]; then
+  for hashPwd in $(cut -d ":" -f2- < /etc/security/passhistory | tr ":" "\n"); do
+    # Figure out its algorithm
+    getalgo "${hashPwd}"
+
+    # Figure out its salt
+    getsalt "${hashPwd}"
+
+    # Use the hash and salt with the provided password
+    # and then finally compare the two
+    if [ "$(hashtest)" = "${hashPwd}" ]; then
+      printf "%s\n" "[ERROR] pwstrength: Password appears to have been previously used.  Further testing stopped.  (Score = 0)"
+      exit 1
+    fi
+  done
+fi
+
+# Check for a digit
+if echo "${PwdIn}" | grep "[0-9]" >/dev/null 2>&1; then
+  printf "%s\n" "[OK]: Digit count"
+else
+  printf "%s\n" "[FAIL]: Password should contain at least one digit.  (Score -1)"
+  ((CredCount = CredCount - 1))
+fi
+# Check for UPPERCASE
+if echo "${PwdIn}" | grep "[A-Z]" >/dev/null 2>&1; then
+  printf "%s\n" "[OK]: UPPERCASE count"
+else
+  printf "%s\n" "[FAIL]: Password should contain at least one uppercase letter.  (Score -1)"
+  ((CredCount = CredCount - 1))
+fi
+# Check for lowercase
+if echo "${PwdIn}" | grep "[a-z]" >/dev/null 2>&1; then
+  printf "%s\n" "[OK]: lowercase count"
+else
+  printf "%s\n" "[FAIL]: Password should contain at least one lowercase letter.  (Score -1)"
+  ((CredCount = CredCount - 1))
+fi
+# Check for special characters
+if echo "${PwdIn}" | grep "[:punct:]" >/dev/null 2>&1; then
+  printf "%s\n" "[OK]: Special character count"
+else
+  printf "%s\n" "[FAIL]: Password should contain at least one special character.  (Score -1)"
+  ((CredCount = CredCount - 1))
+fi
+
+# Print out the judgement
+printf "%s\n" "pwstrength: A score of 3 is required to pass testing, '${PwdIn}' scored ${CredCount}."
+
+# Now check password score, if it's less than three, then it fails
+# Here is where we force the three complexity categories
+if (( CredCount < 3 )); then
+  printf "%s\n" "[FAIL] pwstrength: The check failed for password '${PwdIn}'.  Please try again."
+  exitCode=1
+# Otherwise, it's a valid password
+else
+  printf "%s\n" "[SUCCESS] pwstrength: The password/phrase passed my testing."
+  exitCode=0
+fi
+
+# Pad the output a bit
+printf "%s\n" "" "Extra checks:" ""
+
+################################################################################
+# Extra checks
+################################################################################
+# Check for 'pwscore', which should almost always be in /bin
+# 'pwscore' uses settings defined in '/etc/security/pwquality.conf'
+# It is over to the system administrator to ensure this config file is correct
+# Suggested config:
+#minlen = 12
+#dcredit = 1
+#ucredit = 1
+#lcredit = 1
+#ocredit = 1
+#minclass = 3
+#maxrepeat = 0
+#maxclassrepeat = 0
+
+if command -v pwscore >/dev/null 2>&1; then
+  # Check for a 0 exit code before adding context to the password rating
+  # Otherwise, fail out with the appropriate exit code (1)
+  if pwscore <<< "${PwdIn}" >/dev/null 2>&1; then
+    # 'pwscore' outputs a rating, which roughly translates as shown below.
+    Result="$(pwscore <<< "${PwdIn}")"
+    if (( Result <= 50 )); then
+      printf "%s\n" "'pwscore' rated the password as having a moderate strength (${Result}/100)"
+    elif (( Result > 50 )); then
+      printf "%s\n" "'pwscore' rated the password as having a strong strength (${Result}/100)"
+    fi
+  else
+    printf "%s\n" "'pwscore' did not find the password to be acceptable."
+  fi
+fi
+
+# Next, we check for 'pwqcheck' which should usually be in /usr/bin/
+# This is a configurable tool that uses libpasswdqdc
+if command -v pwqcheck >/dev/null 2>&1; then
+  printf "%s\n" "'pwqcheck' rated the password as: $(pwqcheck -1 min=disabled,disabled,16,12,8 <<< "${PwdIn}")"
+fi
+
+# Next look for 'cracklib-check', ensuring we have permissions to run it
+# 'cracklib-check' does not appear to be customisable, but it uses a
+# 'fascist' password strength standard, so should cover most cases
+if [ -x /usr/sbin/cracklib-check ]; then
+  printf "%s\n" "'cracklib-check' rated the password as:$(/usr/sbin/cracklib-check <<< "${PwdIn}" | cut -d":" -f2-) "
+fi
+
+exit "${exitCode}"
