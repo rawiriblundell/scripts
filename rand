@@ -27,13 +27,19 @@ repeat=false
 zeroPad=false
 tmpDir=/tmp/rand
 
+# Simple 'die' function
+die() {
+  printf "%s\n" "$@" 1>&2
+  exit 1
+}
+
 # In case we actually use $tmpDir, let's trap and delete it
 trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 
 # Figure out our default nMax
-if printf "%d\n" "2147483648" 2>&1 | egrep "out of range|too large" >/dev/null 2>&1; then
+if printf "%d\n" "2147483648" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
   nMax=2147483647             #2^31-1
-elif printf "%d\n" "9223372036854775808" 2>&1 | egrep "out of range|too large" >/dev/null 2>&1; then
+elif printf "%d\n" "9223372036854775808" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
   nMax=9223372036854775807    #2^63-1
 else
   nMax=32767                  #2^15-1, super-safe mode
@@ -57,37 +63,33 @@ while getopts ":dhm:M:N:rz" Flags; do
             "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
           exit 0;;
     (m)   case "${OPTARG}" in
-            (*[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-m) '${OPTARG}' is not a number"; exit 1;;
+            (*[!0-9]*|'') die "[ERROR] rand: (-m) '${OPTARG}' is not a number";;
             (*)           nMin="${OPTARG}";;
           esac;;
     (M)   case "${OPTARG}" in
-            (*[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-M) '${OPTARG}' is not a number"; exit 1;;
+            (*[!0-9]*|'') die "[ERROR] rand: (-M) '${OPTARG}' is not a number";;
             (*)           nMax="${OPTARG}";;
           esac;;
     (N)   case "${OPTARG}" in
-            (*[!0-9]*|'') printf "%s\n" "[ERROR] rand: (-N) '${OPTARG}' is not a number"; exit 1;;
+            (*[!0-9]*|'') die "[ERROR] rand: (-N) '${OPTARG}' is not a number";;
             (*)           nCount="${OPTARG}";;
           esac;;
     (r)   repeat=true;;
     (z)   zeroPad=true;;
-    (\?)  echo "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage."
-          exit 1;;
-    (:)   echo "[ERROR] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'"
-          exit 1;;
+    (\?)  die "[ERROR] rand: Invalid option: '-$OPTARG'.  Try 'rand -h' for usage.";;
+    (:)   die "[ERROR] rand: Option '-$OPTARG' requires an argument. e.g. '-$OPTARG 10'";;
   esac
 done
 
 # Easter Egg
-if printf "%d\n" "${nMax}" 2>&1 | egrep "out of range|too large" >/dev/null 2>&1; then
-  printf "%s\n" "[INFO] rand: Come on now, stop being silly." \
+if printf "%d\n" "${nMax}" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
+  die "[INFO] rand: Come on now, stop being silly." \
     "My upper boundary is *sometimes* '${dnMax}'."
-  exit 1
 fi
 
 # Double check that we haven't done something silly like have nMax less than nMin
 if [ "${nMin}" -ge "${nMax}" ]; then
-  printf "%s\n" "[ERROR] rand: (-m) minimum value is greater than or equal to (-M) maximum value" 1>&2
-  exit 1
+  die "[ERROR] rand: (-m) minimum value is greater than or equal to (-M) maximum value"
 fi
 
 # Put these vars into the environment so we can import them to perl etc
@@ -171,8 +173,7 @@ if [ "${zeroPad}" = true ]; then
     if command -v awk >/dev/null 2>&1; then
       awk '{$1 = sprintf("%02d", $1); print}'
     else
-      printf "%s\n" "[ERROR] rand: 'awk' is required for zero-padding but was not found."
-      exit 1
+      die "[ERROR] rand: 'awk' is required for zero-padding but was not found."
     fi
   }
 else
@@ -407,8 +408,7 @@ elif [ "${nMax}" -lt 1152921504606846975 ]; then
   
 # Provide an outright failure condition just in case
 else
-  printf "%s\n" "[ERROR] rand: Unable to find a suitable method to generate a random integer"
-  exit 1
+  die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
 fi | Fn_zeropad
 
 exit 0
