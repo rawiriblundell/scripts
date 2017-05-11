@@ -43,7 +43,7 @@ fi
 dnMax="${nMax}"
 
 # Getopts
-while getopts "dhm:M:N:rz" Flags; do
+while getopts ":dhm:M:N:rz" Flags; do
   case "${Flags}" in
     (d)   debug="true";;
     (h)   printf "%s\n" "" "rand - generate random positive integers" \
