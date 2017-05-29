@@ -8,6 +8,12 @@
 # Creative Commons Attribution-Noncommercial-Share Alike 3.0 United States License
 ###############################################################################
 
+# Force PATH to start with xpg4.  This ensures we don't use Solaris oawk without
+# needing to go to the expense of checking for xpg4-oawk/gawk/nawk/mawk
+# xpg4 awk is important for the generation of the prototype file
+PATH=/usr/xpg4/bin:$PATH
+export PATH
+
 # Check we have the required binaries
 ErrCount=0
 for Prog in cpio pkgchk pkgproto pkgmk pkgtrans rpm rpm2cpio; do
@@ -38,13 +44,15 @@ printf "%s\n" "rpm2pkg - a tool to convert rpm's to SVR4 Solaris pkg format"\
   "" \
   "By default, 'rpm2pkg' will search for package scripts in the input rpm " \
   "and simply copy them over.  There is no guarantee that these scripts will work" \
-  "on the Solaris target system, so you may want to provide your own.  Alternatively," \
-  "you may want to add-in your own package scripts.  These options enable that." \
+  "on the Solaris target system, so you may want to provide your own." \
   "" \
   "When defining the PKG attribute, it's common to use 3-4 uppercase characters" \
   "usually an abbreviated company or repo name e.g. SUNWsomepkg.  'rpm2pkg' will" \
   "default to 'RPMC<name gathered from the rpm>', where RPMC = RPM Converted." \
-  ""
+  "" \
+  "There are many other aspects to a package that this tool can't reasonably cater for" \
+  "so '-i' is provided for you to make any final tweaks and customisations prior" \
+  "to the final packaging e.g. adding/removing files, adjusting pkgmap etc"
 }
 
 # GETOPTS
@@ -246,7 +254,7 @@ rpm2cpio "${OrigRPM}" | cpio -dim &>/dev/null
   # to allow fine tuning of file permissions/mapping in the prototype file.
   find . -print | pkgproto \
   | egrep -v 'none prototype|none preinstall|none postinstall|none preremove|none postremove' \
-  | awk '{$5=ENVIRON["rpmFileOwner"];$6=ENVIRON["rpmFileGroup"]; print}'
+  | awk -v rpmF="${rpmFileOwner}" -v rpmG="${rpmFileGroup}" '{$5=rpmF; $6=rpmG; print}'
 
 } > "${TmpDir}"/prototype
 
