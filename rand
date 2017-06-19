@@ -109,24 +109,19 @@ Fn_debug() {
 # Note: for POSIX compat, we sadly can't use arrays (can we test for that capability?)
 # this means there will be potentially a massive performance hit at scale
 Fn_fill() {
-  # Capture the requested number of integers
-  maxCount="${nCount}"
-  
-  # Multiply the original count to improve the chances of unique elements being selected
-  if [ "${nCount}" -ge 100 ]; then
-    nCount=$(( nCount * 2 ))
-  fi
-  
+
+  selectedMethod="$1"
+
   # Call the method specified upon function invocation
   # Use Fn_unique to get an unsorted list of unique integers
-  initFill=$($1 | Fn_unique)
+  intFill=$(${selectedMethod} | Fn_unique)
 
   # Count how many unique integers we have generated
-  initCount=$(printf "%s\n" "${initFill}" | wc -l)
+  intCount=$(printf "%s\n" "${intFill}" | wc -l)
 
   # If we've generated enough to satisfy nCount, then we just print them out
-  if [ "${initCount}" -ge "${maxCount}" ]; then
-    printf "%s\n" "${initFill}" | head -n "${maxCount}"
+  if [ "${intCount}" -ge "${nCount}" ]; then
+    printf "%s\n" "${intFill}" | head -n "${nCount}"
     
   # Otherwise, we walk through a few steps to try and quickly fill the gap
   else
@@ -134,13 +129,18 @@ Fn_fill() {
     mkdir -p "${tmpDir}"
     
     # Now let's make these files, starting by dumping what we already have
-    printf "%s\n" "${initFill}" > "${tmpDir}"/rnginit
+    printf "%s\n" "${intFill}" > "${tmpDir}"/rnginit
 
-    # Next, let's generate a list of what's missing
-    printf "%s\n" "${initFill}" "$(seq "${nMin}" "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
-  
-    # Interleave the two using 'paste' and dump them out
-    paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
+    # Until we have our full set of random integers,
+    # Keep throwing random ints into the temporary file
+    while [ "${intCount}" -le "${nCount}" ]; do
+      printf "%s\n" "$(cat "${tmpDir}"/rnginit)" "${selectedMethod}" | Fn_unique > "${tmpDir}"/rnginit2
+      mv "${tmpDir}"/rnginit2 "${tmpDir}"/rnginit
+      intCount=$(wc -l < "${tmpDir}"/rnginit)
+    done 
+
+    # Now that the full integer set is built, dump it out
+    head -n "${nCount}" "${tmpDir}"/rnginit
   fi
 }
 
@@ -176,36 +176,30 @@ fi
 
 # Function to generate numbers using 'gawk'
 method_gawk() {
-  Fn_debug gawk
   gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using BSD 'jot'
 method_jot() {
-  Fn_debug jot
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 }
 
 # Function to generate numbers using 'nawk' or 'mawk'
 method_nawk() {
   if command -v mawk >/dev/null 2>&1; then
-    Fn_debug mawk
     mawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
   else
-    Fn_debug nawk
     nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
   fi
 }
 
 # Function to generate numbers using 'perl'
 method_perl() {
-  Fn_debug perl
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { printf "%.0f\n", int(rand($mx-$mn))+$mn ; }'
 }
 
 # Function to generate numbers using 'python'
 method_python() {
-  Fn_debug python
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
   
   # The alternative method below was tested but abandoned for now
@@ -220,7 +214,6 @@ method_python() {
 # This way, the entire bitshifting formula remains the same
 # See: https://rosettacode.org/wiki/Linear_congruential_generator
 method_RANDOM() {
-  Fn_debug Skoruppa Bitshift
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
   # This is for the rightwards bitshift
   logn=1
@@ -282,7 +275,6 @@ method_RANDOM() {
 
 # Function to generate numbers using GNU 'shuf'
 method_shuf() {
-  Fn_debug shuf
   # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the 
   # '-r' option.  This option was introduced in v8.22
   # Once again, Solaris proves to be the bane of my scripting existence.  
@@ -326,12 +318,14 @@ fi
 # Cater for GNU shuf, nice and fast
 # This function will also cater for the repeat option natively
 if command -v shuf > /dev/null 2>&1; then
+  Fn_debug shuf
   method_shuf
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is limited to 2^31-1 by the arc4random algorithm
 # so we also test for an nMax limit based on that
 elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+  Fn_debug jot
   # Repeating generated numbers is the default behaviour of 'jot'
   if [ "${repeat}" = true ]; then
     method_jot
@@ -342,6 +336,7 @@ elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
+  Fn_debug perl
   if [ "${repeat}" = true ]; then
     method_perl
   else
@@ -351,6 +346,7 @@ elif command -v perl > /dev/null 2>&1; then
 # Otherwise, we try python
 # We need to ensure that /dev/urandom is available, as python sources it
 elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
+  Fn_debug python
   if [ "${repeat}" = true ]; then
     method_python
   else
@@ -359,6 +355,7 @@ elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
 
 # No perl or python?  Let's try 'gawk'
 elif command -v gawk > /dev/null 2>&1; then
+  Fn_debug gawk
   if [ "${repeat}" = true ]; then
     method_gawk
   else
@@ -368,6 +365,7 @@ elif command -v gawk > /dev/null 2>&1; then
 # No gawk?  Surely 'nawk' or 'mawk' is hanging around?  Works very similar, but 
 # because we don't have systime() we have to replicate it as a seed for srand().
 elif command -v nawk mawk > /dev/null 2>&1; then
+  Fn_debug nawk/mawk
   if [ "${repeat}" = true ]; then
     method_nawk
   else
@@ -379,6 +377,7 @@ elif command -v nawk mawk > /dev/null 2>&1; then
 # No shuf, jot, perl, python, gawk, nawk or mawk?  Fear not!  
 # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
 elif [ "${nMax}" -lt 1152921504606846975 ]; then
+  Fn_debug Skoruppa Bitshift
   if [ "${repeat}" = true ]; then
     method_RANDOM
   else
