@@ -109,19 +109,24 @@ Fn_debug() {
 # Note: for POSIX compat, we sadly can't use arrays (can we test for that capability?)
 # this means there will be potentially a massive performance hit at scale
 Fn_fill() {
-
-  selectedMethod="$1"
-
+  # Capture the requested number of integers
+  maxCount="${nCount}"
+  
+  # Multiply the original count to improve the chances of unique elements being selected
+  if [ "${nCount}" -ge 100 ]; then
+    nCount=$(( nCount * 2 ))
+  fi
+  
   # Call the method specified upon function invocation
   # Use Fn_unique to get an unsorted list of unique integers
-  intFill=$(${selectedMethod} | Fn_unique)
+  initFill=$($1 | Fn_unique)
 
   # Count how many unique integers we have generated
-  intCount=$(printf "%s\n" "${intFill}" | wc -l)
+  initCount=$(printf "%s\n" "${initFill}" | wc -l)
 
   # If we've generated enough to satisfy nCount, then we just print them out
-  if [ "${intCount}" -ge "${nCount}" ]; then
-    printf "%s\n" "${intFill}" | head -n "${nCount}"
+  if [ "${initCount}" -ge "${maxCount}" ]; then
+    printf "%s\n" "${initFill}" | head -n "${maxCount}"
     
   # Otherwise, we walk through a few steps to try and quickly fill the gap
   else
@@ -129,18 +134,13 @@ Fn_fill() {
     mkdir -p "${tmpDir}"
     
     # Now let's make these files, starting by dumping what we already have
-    printf "%s\n" "${intFill}" > "${tmpDir}"/rnginit
+    printf "%s\n" "${initFill}" > "${tmpDir}"/rnginit
 
-    # Until we have our full set of random integers,
-    # Keep throwing random ints into the temporary file
-    while [ "${intCount}" -le "${nCount}" ]; do
-      printf "%s\n" "$(cat "${tmpDir}"/rnginit)" "${selectedMethod}" | Fn_unique > "${tmpDir}"/rnginit2
-      mv "${tmpDir}"/rnginit2 "${tmpDir}"/rnginit
-      intCount=$(wc -l < "${tmpDir}"/rnginit)
-    done 
-
-    # Now that the full integer set is built, dump it out
-    head -n "${nCount}" "${tmpDir}"/rnginit
+    # Next, let's generate a list of what's missing
+    printf "%s\n" "${initFill}" "$(seq "${nMin}" "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
+      
+    # Interleave the two using 'paste' and dump them out
+    paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
   fi
 }
 
