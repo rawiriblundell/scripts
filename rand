@@ -92,6 +92,11 @@ if [ "${nMin}" -ge "${nMax}" ]; then
   die "[ERROR] rand: (-m) minimum value is greater than or equal to (-M) maximum value"
 fi
 
+# If repeat is not set, then nCount cannot be higher than nMax
+if [ "${repeat}" = "false" ] && [ "${nCount}" -gt "${nMax}" ]; then
+  die "[ERROR] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax})"
+fi
+
 # Put these vars into the environment so we can import them to perl etc
 export nMin nMax nCount
 
@@ -109,38 +114,35 @@ Fn_debug() {
 # Note: for POSIX compat, we sadly can't use arrays (can we test for that capability?)
 # this means there will be potentially a massive performance hit at scale
 Fn_fill() {
-  # Capture the requested number of integers
-  maxCount="${nCount}"
-  
-  # Multiply the original count to improve the chances of unique elements being selected
-  if [ "${nCount}" -ge 100 ]; then
-    nCount=$(( nCount * 2 ))
-  fi
-  
+
   # Call the method specified upon function invocation
   # Use Fn_unique to get an unsorted list of unique integers
-  initFill=$($1 | Fn_unique)
+  intFill=$($1 | Fn_unique)
 
   # Count how many unique integers we have generated
-  initCount=$(printf "%s\n" "${initFill}" | wc -l)
+  intCount=$(printf "%s\n" "${intFill}" | wc -l)
 
   # If we've generated enough to satisfy nCount, then we just print them out
-  if [ "${initCount}" -ge "${maxCount}" ]; then
-    printf "%s\n" "${initFill}" | head -n "${maxCount}"
+  if [ "${intCount}" -ge "${nCount}" ]; then
+    printf "%s\n" "${intFill}" | head -n "${nCount}"
     
   # Otherwise, we walk through a few steps to try and quickly fill the gap
   else
     # Create a tmpdir
     mkdir -p "${tmpDir}"
     
-    # Now let's make these files, starting by dumping what we already have
-    printf "%s\n" "${initFill}" > "${tmpDir}"/rnginit
+    # Now dump what we have to a temporary file
+    printf "%s\n" "${intFill}" > "${tmpDir}"/rnginit
 
-    # Next, let's generate a list of what's missing
-    printf "%s\n" "${initFill}" "$(seq "${nMin}" "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
-      
-    # Interleave the two using 'paste' and dump them out
-    paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
+    # Until we have our full set of random integers,
+    # Keep throwing random ints into the temporary file
+    while [ "${intCount}" -lt "${nCount}" ]; do
+      eval "$1" >> "${tmpDir}"/rnginit
+      intCount=$(Fn_unique < "${tmpDir}"/rnginit | wc -l)
+    done 
+
+    # Now that the full integer set is built, dump it out
+    Fn_unique < "${tmpDir}"/rnginit | head -n "${nCount}"
   fi
 }
 
