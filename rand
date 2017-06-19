@@ -100,7 +100,7 @@ export nMin nMax nCount
 ################################################################################
 # This function simply outputs the method used for random integer generation
 Fn_debug() {
-  [ "${debug}" = true ] && printf "%s\n" "[DEBUG] rand: Method used is '$@'"
+  [ "${debug}" = true ] && printf "%s\n" "[DEBUG] rand: Method used is '$*'"
 }
 
 # This function ensures equal distribution for methods that don't support it
