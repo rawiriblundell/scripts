@@ -98,6 +98,11 @@ export nMin nMax nCount
 ################################################################################
 # Functions
 ################################################################################
+# This function simply outputs the method used for random integer generation
+Fn_debug() {
+  [ "${debug}" = true ] && printf "%s\n" "[DEBUG] rand: Method used is '$@'"
+}
+
 # This function ensures equal distribution for methods that don't support it
 # If you request random numbers between 1 and 10, you should only get a complete
 # set of random numbers between 1 and 10.  This is disabled with '-r'
@@ -133,20 +138,7 @@ Fn_fill() {
 
     # Next, let's generate a list of what's missing
     printf "%s\n" "${initFill}" "$(seq "${nMin}" "${nMax}")" | sort | uniq -u > "${tmpDir}"/rngdiff
-    
-    # Split up rngdiff on a 70/30 ratio and rotate the two segments
-    # This reduces the opportunity for recognisable patterns to creep in
-    # We start a subshell
-    #(
-      # Now we cd to the tmpDir
-    #  cd "${tmpDir}" || exit 1
-      # We split at the number of lines calculated as 70% of the total
-      # 'split' will generate two files: xaa (70%) and xab (the remainder i.e. 30%)
-    #  split -l $(( $(wc -l < "${tmpDir}"/rngdiff) * 70 / 100 )) | "${tmpDir}"/rngdiff
-      # Now we use 'tac' to invert both files and merge them back together
-    #  tac xab xaa > "${tmpDir}"/rngdiff
-    #)
-      
+  
     # Interleave the two using 'paste' and dump them out
     paste -d '\n' "${tmpDir}"/rnginit "${tmpDir}"/rngdiff | grep . | head -n "${maxCount}"
   fi
@@ -184,30 +176,36 @@ fi
 
 # Function to generate numbers using 'gawk'
 method_gawk() {
+  Fn_debug gawk
   gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using BSD 'jot'
 method_jot() {
+  Fn_debug jot
   jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
 }
 
 # Function to generate numbers using 'nawk' or 'mawk'
 method_nawk() {
   if command -v mawk >/dev/null 2>&1; then
+    Fn_debug mawk
     mawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
   else
+    Fn_debug nawk
     nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
   fi
 }
 
 # Function to generate numbers using 'perl'
 method_perl() {
+  Fn_debug perl
   perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { printf "%.0f\n", int(rand($mx-$mn))+$mn ; }'
 }
 
 # Function to generate numbers using 'python'
 method_python() {
+  Fn_debug python
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
   
   # The alternative method below was tested but abandoned for now
@@ -222,6 +220,7 @@ method_python() {
 # This way, the entire bitshifting formula remains the same
 # See: https://rosettacode.org/wiki/Linear_congruential_generator
 method_RANDOM() {
+  Fn_debug Skoruppa Bitshift
   # We need to know the number of bits required to represent nMax (i.e. bitlength)
   # This is for the rightwards bitshift
   logn=1
@@ -283,6 +282,7 @@ method_RANDOM() {
 
 # Function to generate numbers using GNU 'shuf'
 method_shuf() {
+  Fn_debug shuf
   # It turns out that Solaris 11 comes with 'shuf' v8.16, which lacks the 
   # '-r' option.  This option was introduced in v8.22
   # Once again, Solaris proves to be the bane of my scripting existence.  
@@ -326,18 +326,12 @@ fi
 # Cater for GNU shuf, nice and fast
 # This function will also cater for the repeat option natively
 if command -v shuf > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'shuf'"
-  fi
   method_shuf
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is limited to 2^31-1 by the arc4random algorithm
 # so we also test for an nMax limit based on that
 elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'jot'"
-  fi
   # Repeating generated numbers is the default behaviour of 'jot'
   if [ "${repeat}" = true ]; then
     method_jot
@@ -348,9 +342,6 @@ elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
 elif command -v perl > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'perl'"
-  fi
   if [ "${repeat}" = true ]; then
     method_perl
   else
@@ -360,9 +351,6 @@ elif command -v perl > /dev/null 2>&1; then
 # Otherwise, we try python
 # We need to ensure that /dev/urandom is available, as python sources it
 elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'python'"
-  fi
   if [ "${repeat}" = true ]; then
     method_python
   else
@@ -371,9 +359,6 @@ elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
 
 # No perl or python?  Let's try 'gawk'
 elif command -v gawk > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'gawk'"
-  fi
   if [ "${repeat}" = true ]; then
     method_gawk
   else
@@ -383,9 +368,6 @@ elif command -v gawk > /dev/null 2>&1; then
 # No gawk?  Surely 'nawk' or 'mawk' is hanging around?  Works very similar, but 
 # because we don't have systime() we have to replicate it as a seed for srand().
 elif command -v nawk mawk > /dev/null 2>&1; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'nawk/mawk'"
-  fi
   if [ "${repeat}" = true ]; then
     method_nawk
   else
@@ -397,9 +379,6 @@ elif command -v nawk mawk > /dev/null 2>&1; then
 # No shuf, jot, perl, python, gawk, nawk or mawk?  Fear not!  
 # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
 elif [ "${nMax}" -lt 1152921504606846975 ]; then
-  if [ "${debug}" = true ]; then
-    printf "%s\n" "[DEBUG] rand: Method used is 'Skoruppa bitshift'"
-  fi
   if [ "${repeat}" = true ]; then
     method_RANDOM
   else
