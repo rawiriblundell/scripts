@@ -183,7 +183,9 @@ method_gawk() {
 
 # Function to generate numbers using BSD 'jot'
 method_jot() {
-  jot -w %i -r "${nCount}" "${nMin}" "${nMax}"
+  # Some versions of 'jot' have uniform distribution, others do not.
+  # This is a lo-fi approach to try and cater for both
+  jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | grep -v "$(( nMax + 1 ))"
 }
 
 # Function to generate numbers using 'nawk' or 'mawk'
