@@ -249,7 +249,7 @@ method_gawk() {
 method_jot() {
   # Some versions of 'jot' have uniform distribution, others do not.
   # This is a lo-fi approach to try and cater for both
-  jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | grep -v "$(( nMax + 1 ))"
+  jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | sed "s/$(( nMax + 1 ))/$(( nMax ))/"
 }
 
 # Function to generate numbers using 'nawk'
