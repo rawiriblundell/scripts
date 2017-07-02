@@ -36,22 +36,35 @@ die() {
 # In case we actually use $tmpDir, let's trap and delete it
 trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 
-# Figure out our default nMax
-if printf "%d\n" "2147483648" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
-  nMax=2147483647             #2^31-1
-elif printf "%d\n" "9223372036854775808" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
-  nMax=9223372036854775807    #2^63-1
-else
-  nMax=32767                  #2^15-1, super-safe mode
-fi
+# Figure out our default nMax, working our way back from 2^63-1 to 2^15-1
+while [ -z "${nMax}" ]; do
+  for int in \
+  9223372036854775807 4611686018427387903 2305843009213693951 1152921504606846975 \
+  576460752303423487 288230376151711743 144115188075855871 72057594037927935 \
+  36028797018963967 18014398509481983 9007199254740991 4503599627370495 \
+  2251799813685247 1125899906842623 562949953421311 281474976710655 140737488355327 \
+  70368744177663 35184372088831 17592186044415 8796093022207 4398046511103 \
+  2199023255551 1099511627775 549755813887 274877906943 137438953471 68719476735 \
+  34359738367 17179869183 8589934591 4294967295 2147483647 1073741823 536870911 \
+  268435455 134217727 67108863 33554431 16777215 8388607 4194303 2097151 1048575 \
+  524287 262143 131071 65535 32767; do
+    if (( 1 >= int )); then
+      :
+    else 
+      nMax="${int}"
+      break
+    fi
+  done
+done
 
-# And save it
+# And back it up in another variable for later use
 dnMax="${nMax}"
 
 # Getopts
-while getopts ":dhm:M:N:rz" Flags; do
+while getopts ":dDhm:M:N:rz" Flags; do
   case "${Flags}" in
     (d)   debug="true";;
+    (D)   debug="true"; set -x;;
     (h)   printf "%s\n" "" "rand - generate random positive integers" \
             "" "Optional Arguments:" \
             "-d [debug.  Tells you which processing method is used (Default:off)]" \
@@ -94,7 +107,33 @@ fi
 
 # If repeat is not set, then nCount cannot be higher than nMax
 if [ "${repeat}" = "false" ] && [ "${nCount}" -gt "${nMax}" ]; then
-  die "[ERROR] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax})"
+  printf "%s\n" "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax}).  Count will be: ${nMax}."
+  nCount="${nMax}"
+fi
+
+# Figure out the triples required for the xorshift generator
+# 8 bit and 16 bit triples sourced from
+# http://www.arklyffe.com/main/2010/08/29/xorshift-pseudorandom-number-generator/
+if (( nMax <= 255 )); then
+  # 8 bit (1 - 255 )
+  shifta=7
+  shiftb=5
+  shiftc=3
+elif (( nMax <= 65535 )); then
+  # 16 bit (1 - 65535)
+  shifta=13
+  shiftb=9
+  shiftc=7
+elif (( nMax <= 4294967295 )); then
+  # 32 bit (1 - 4294967295)
+  shifta=13
+  shiftb=17
+  shiftc=5
+else
+  # 63 bit (1 - 9223372036854775807)
+  shifta=13
+  shiftb=7
+  shiftc=17
 fi
 
 # Put these vars into the environment so we can import them to perl etc
@@ -111,7 +150,7 @@ Fn_debug() {
 # This function ensures equal distribution for methods that don't support it
 # If you request random numbers between 1 and 10, you should only get a complete
 # set of random numbers between 1 and 10.  This is disabled with '-r'
-# Note: for POSIX compat, we sadly can't use arrays (can we test for that capability?)
+# Note: for POSIX compat, we sadly can't use arrays
 # this means there will be potentially a massive performance hit at scale
 Fn_fill() {
 
@@ -143,6 +182,31 @@ Fn_fill() {
 
     # Now that the full integer set is built, dump it out
     Fn_unique < "${tmpDir}"/rnginit | head -n "${nCount}"
+  fi
+}
+
+# Because 'date +%s' isn't entirely portable, we try other methods to get the epoch
+Fn_getEpoch() {
+  if date '+%s' &>/dev/null; then
+    date '+%s'
+  elif command -v perl &>/dev/null; then
+    perl -e "print time"
+  elif command -v truss >/dev/null 2>&1 && [ "$(uname)" = SunOS ]; then
+    truss date 2>&1 | grep ^time | awk -F"= " '{print $2}'
+  elif command -v truss >/dev/null 2>&1 && [ "$(uname)" = FreeBSD ]; then
+    truss date 2>&1 | grep ^gettimeofday | cut -d "{" -f2 | cut -d "." -f1
+  # Otherwise, just pump out the raw date
+  else
+    date '+%Y%M%d%H%M%S'
+  fi
+}
+
+# Switch between Fn_fill or not
+Fn_repeat() {
+  if [ "${repeat}" = true ]; then
+    "$1"
+  else
+    Fn_fill "$1"
   fi
 }
 
@@ -188,13 +252,10 @@ method_jot() {
   jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | grep -v "$(( nMax + 1 ))"
 }
 
-# Function to generate numbers using 'nawk' or 'mawk'
+# Function to generate numbers using 'nawk'
+# This used to also call 'mawk' but that was found to be vulnerable to repeating output
 method_nawk() {
-  if command -v mawk >/dev/null 2>&1; then
-    mawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
-  else
-    nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(date +%Y%M%d%H%M%S)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
-  fi
+  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(Fn_getEpoch)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { printf "%d\n", int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using 'perl'
@@ -234,9 +295,10 @@ method_RANDOM() {
   if [ -c /dev/urandom ] && command -v od >/dev/null 2>&1; then
     # Get a string of bytes from /dev/urandom using od
     rnSeed=$(od -N 4 -A n -t uL /dev/urandom | tr -d " ")
-  # Otherwise we can just seed it using the epoch
+  # Otherwise we try to get another seed
   else
-    rnSeed=$(date +%s)
+    # First we try to get the epoch
+    rnSeed=$(Fn_getEpoch)
   fi
 
   # Start a loop based on nCount.  I thought of other ways, but this works easier
@@ -303,6 +365,25 @@ method_shuf() {
   fi
 }
 
+method_xorshift() {
+  int=$(Fn_getEpoch)
+  while (( int >= nMax )); do
+    int=$(( int / 2 ))
+  done
+  mod=$(( $nMax + 1 - $nMin ))
+  count=0
+  while (( count <= nCount )); do
+    int=$(( int ^ int << shifta ))
+    int=$(( int ^ int >> shiftb ))
+    int=$(( int ^ int << shiftc ))
+    int=$(( $int % $mod ))
+    printf "%u\n" "$(( $int + $nMin ))"
+    int=$(( (1103515245 * int + 12345) % 2147483648 ))
+    int=$(( int / 65536 ))
+    let count++
+  done
+}
+
 # Check if 'seq' is available, if not, provide a basic replacement function
 # Note: this has been stripped back to cater only for ascending sequences
 # A fuller, bash-friendly version is available at https://github.com/rawiriblundell
@@ -321,72 +402,48 @@ fi
 ###############################################################################
 # Cater for GNU shuf, nice and fast
 # This function will also cater for the repeat option natively
-if command -v shuf > /dev/null 2>&1; then
+if command -v shuf2 > /dev/null 2>&1; then
   Fn_debug shuf
   method_shuf
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is limited to 2^31-1 by the arc4random algorithm
 # so we also test for an nMax limit based on that
-elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+elif command -v jot8 > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
   Fn_debug jot
   # Repeating generated numbers is the default behaviour of 'jot'
-  if [ "${repeat}" = true ]; then
-    method_jot
-  else
-    Fn_fill method_jot
-  fi
+  Fn_repeat method_jot
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
-elif command -v perl > /dev/null 2>&1; then
+elif command -v perl3 > /dev/null 2>&1; then
   Fn_debug perl
-  if [ "${repeat}" = true ]; then
-    method_perl
-  else
-    Fn_fill method_perl
-  fi
+  Fn_repeat method_perl
 
 # Otherwise, we try python
 # We need to ensure that /dev/urandom is available, as python sources it
-elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
+elif command -v python6 > /dev/null 2>&1 && [ -c /dev/urandom ]; then
   Fn_debug python
-  if [ "${repeat}" = true ]; then
-    method_python
-  else
-    Fn_fill method_python
-  fi
+  Fn_repeat method_python
 
 # No perl or python?  Let's try 'gawk'
-elif command -v gawk > /dev/null 2>&1; then
+elif command -v gawk3 > /dev/null 2>&1; then
   Fn_debug gawk
-  if [ "${repeat}" = true ]; then
-    method_gawk
-  else
-    Fn_fill method_gawk
-  fi
+  Fn_repeat method_python
   
-# No gawk?  Surely 'nawk' or 'mawk' is hanging around?  Works very similar, but 
+# No gawk?  Surely 'nawk' is hanging around?  Works very similar, but 
 # because we don't have systime() we have to replicate it as a seed for srand().
-elif command -v nawk mawk > /dev/null 2>&1; then
-  Fn_debug nawk/mawk
-  if [ "${repeat}" = true ]; then
-    method_nawk
-  else
-    Fn_fill method_nawk
-  fi
+elif command -v nawk4 > /dev/null 2>&1; then
+  Fn_debug nawk
+  Fn_repeat method_nawk
 
 # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
 
-# No shuf, jot, perl, python, gawk, nawk or mawk?  Fear not!  
+# No shuf, jot, perl, python, gawk or nawk?  Fear not!  
 # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
-elif [ "${nMax}" -lt 1152921504606846975 ]; then
+elif (( nMax < 1152921504606846975 )); then
   Fn_debug Skoruppa Bitshift
-  if [ "${repeat}" = true ]; then
-    method_RANDOM
-  else
-    Fn_fill method_RANDOM
-  fi
+  Fn_repeat method_RANDOM
   
 # Provide an outright failure condition just in case
 else
