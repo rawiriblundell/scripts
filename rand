@@ -402,38 +402,38 @@ fi
 ###############################################################################
 # Cater for GNU shuf, nice and fast
 # This function will also cater for the repeat option natively
-if command -v shuf2 > /dev/null 2>&1; then
+if command -v shuf > /dev/null 2>&1; then
   Fn_debug shuf
   method_shuf
 
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is limited to 2^31-1 by the arc4random algorithm
 # so we also test for an nMax limit based on that
-elif command -v jot8 > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
   Fn_debug jot
   # Repeating generated numbers is the default behaviour of 'jot'
   Fn_repeat method_jot
 
 # Now we start going less-native and try perl.  Very likely to be there,   
 # so very likely this will be a commonly used option
-elif command -v perl3 > /dev/null 2>&1; then
+elif command -v perl > /dev/null 2>&1; then
   Fn_debug perl
   Fn_repeat method_perl
 
 # Otherwise, we try python
 # We need to ensure that /dev/urandom is available, as python sources it
-elif command -v python6 > /dev/null 2>&1 && [ -c /dev/urandom ]; then
+elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
   Fn_debug python
   Fn_repeat method_python
 
 # No perl or python?  Let's try 'gawk'
-elif command -v gawk3 > /dev/null 2>&1; then
+elif command -v gawk > /dev/null 2>&1; then
   Fn_debug gawk
   Fn_repeat method_python
   
 # No gawk?  Surely 'nawk' is hanging around?  Works very similar, but 
 # because we don't have systime() we have to replicate it as a seed for srand().
-elif command -v nawk4 > /dev/null 2>&1; then
+elif command -v nawk > /dev/null 2>&1; then
   Fn_debug nawk
   Fn_repeat method_nawk
 
