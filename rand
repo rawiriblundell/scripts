@@ -372,14 +372,12 @@ method_xorshift() {
   done
   mod=$(( $nMax + 1 - $nMin ))
   count=0
-  while (( count <= nCount )); do
+  while (( count < nCount )); do
     int=$(( int ^ int << shifta ))
     int=$(( int ^ int >> shiftb ))
     int=$(( int ^ int << shiftc ))
     int=$(( $int % $mod ))
     printf "%u\n" "$(( $int + $nMin ))"
-    int=$(( (1103515245 * int + 12345) % 2147483648 ))
-    int=$(( int / 65536 ))
     let count++
   done
 }
