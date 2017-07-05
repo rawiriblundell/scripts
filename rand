@@ -270,7 +270,7 @@ method_RANDOM() {
 
   # Start a loop based on nCount.  I thought of other ways, but this works easier
   # and can be made more portable if testing proves the need to do so
-  while [ "${nCount}" -gt  0 ]; do
+  while [ "${nCount}" -gt 0 ]; do
     # Start generating seeds for the LCG
     rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
     # If the RANDOM variable is blank, we failover to the LCG
@@ -420,7 +420,7 @@ if command -v shuf > /dev/null 2>&1; then
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is limited to 2^31-1 by the arc4random algorithm
 # so we also test for an nMax limit based on that
-elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -gt 2147483647 ]; then
+elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
   Fn_debug jot
   # Repeating generated numbers is the default behaviour of 'jot'
   Fn_repeat method_jot
@@ -452,14 +452,13 @@ elif command -v nawk > /dev/null 2>&1; then
 
 # No shuf, jot, perl, python, gawk or nawk?  Fear not!  
 # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
-elif [ "${nMax}" -gt 1152921504606846975 ]; then
-#else
+elif [ "${nMax}" -lt 1152921504606846975 ]; then
   Fn_debug Skoruppa Bitshift
   Fn_repeat method_RANDOM
   
 # Provide an outright failure condition just in case
-#else
-#  die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
+else
+  die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
 fi | Fn_zeropad
 
 exit 0
