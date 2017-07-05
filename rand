@@ -29,7 +29,7 @@ tmpDir=/tmp/rand
 
 # Simple 'die' function
 die() {
-  printf "%s\n" "$@" 1>&2
+  printf '%s\n' "$@" 1>&2
   exit 1
 }
 
@@ -37,40 +37,34 @@ die() {
 trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 
 # Figure out our default nMax, working our way back from 2^63-1 to 2^15-1
-while [ -z "${nMax}" ]; do
-  for int in \
-  9223372036854775807 4611686018427387903 2305843009213693951 1152921504606846975 \
-  576460752303423487 288230376151711743 144115188075855871 72057594037927935 \
-  36028797018963967 18014398509481983 9007199254740991 4503599627370495 \
-  2251799813685247 1125899906842623 562949953421311 281474976710655 140737488355327 \
-  70368744177663 35184372088831 17592186044415 8796093022207 4398046511103 \
-  2199023255551 1099511627775 549755813887 274877906943 137438953471 68719476735 \
-  34359738367 17179869183 8589934591 4294967295 2147483647 1073741823 536870911 \
-  268435455 134217727 67108863 33554431 16777215 8388607 4194303 2097151 1048575 \
-  524287 262143 131071 65535 32767; do
-    if (( 1 >= int )); then
-      :
-    else 
-      nMax="${int}"
-      break
-    fi
-  done
+for maxRand in \
+9223372036854775807 4611686018427387903 2305843009213693951 1152921504606846975 \
+576460752303423487 288230376151711743 144115188075855871 72057594037927935 \
+36028797018963967 18014398509481983 9007199254740991 4503599627370495 \
+2251799813685247 1125899906842623 562949953421311 281474976710655 140737488355327 \
+70368744177663 35184372088831 17592186044415 8796093022207 4398046511103 \
+2199023255551 1099511627775 549755813887 274877906943 137438953471 68719476735 \
+34359738367 17179869183 8589934591 4294967295 2147483647 1073741823 536870911 \
+268435455 134217727 67108863 33554431 16777215 8388607 4194303 2097151 1048575 \
+524287 262143 131071 65535 32767; do
+  if [ 1 -ge "${maxRand}" ]; then
+    :
+  else
+    break
+  fi
 done
-
-# And back it up in another variable for later use
-dnMax="${nMax}"
 
 # Getopts
 while getopts ":dDhm:M:N:rz" Flags; do
   case "${Flags}" in
     (d)   debug="true";;
     (D)   debug="true"; set -x;;
-    (h)   printf "%s\n" "" "rand - generate random positive integers" \
+    (h)   printf '%s\n' "" "rand - generate random positive integers" \
             "" "Optional Arguments:" \
             "-d [debug.  Tells you which processing method is used (Default:off)]" \
             "-h [help]" \
             "-m [minimum number (Default:${nMin})]" \
-            "-M [maximum number (Default:${nMax})]" \
+            "-M [maximum number (Default:${maxRand})]" \
             "-N [count.  Number of numbers (Default:${nCount})]" \
             "-r [repeat.  Output lines may be repeated (Default:off)]" \
             "-z [zero pad single digits.  E.g. '9' becomes '09' (Default:off)]" ""
@@ -95,9 +89,9 @@ while getopts ":dDhm:M:N:rz" Flags; do
 done
 
 # Easter Egg
-if printf "%d\n" "${nMax}" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
+if printf '%d\n' "${nMax}" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
   die "[INFO] rand: Come on now, stop being silly." \
-    "My upper boundary is *sometimes* '${dnMax}'."
+    "My upper boundary is *sometimes* '${maxRand}'."
 fi
 
 # Double check that we haven't done something silly like have nMax less than nMin
@@ -107,33 +101,8 @@ fi
 
 # If repeat is not set, then nCount cannot be higher than nMax
 if [ "${repeat}" = "false" ] && [ "${nCount}" -gt "${nMax}" ]; then
-  printf "%s\n" "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax}).  Count will be: ${nMax}."
+  printf '%s\n' "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax}).  Count will be: ${nMax}."
   nCount="${nMax}"
-fi
-
-# Figure out the triples required for the xorshift generator
-# 8 bit and 16 bit triples sourced from
-# http://www.arklyffe.com/main/2010/08/29/xorshift-pseudorandom-number-generator/
-if (( nMax <= 255 )); then
-  # 8 bit (1 - 255 )
-  shifta=7
-  shiftb=5
-  shiftc=3
-elif (( nMax <= 65535 )); then
-  # 16 bit (1 - 65535)
-  shifta=13
-  shiftb=9
-  shiftc=7
-elif (( nMax <= 4294967295 )); then
-  # 32 bit (1 - 4294967295)
-  shifta=13
-  shiftb=17
-  shiftc=5
-else
-  # 63 bit (1 - 9223372036854775807)
-  shifta=13
-  shiftb=7
-  shiftc=17
 fi
 
 # Put these vars into the environment so we can import them to perl etc
@@ -144,7 +113,31 @@ export nMin nMax nCount
 ################################################################################
 # This function simply outputs the method used for random integer generation
 Fn_debug() {
-  [ "${debug}" = true ] && printf "%s\n" "[DEBUG] rand: Method used is '$*'"
+  [ "${debug}" = true ] && printf '%s\n' "[DEBUG] rand: Method used is '$*'"
+}
+
+# Function to generate a reliable seed for whatever method requires one
+# Because 'date +%s' isn't entirely portable, we try other methods to get the epoch
+Fn_getSeed() {
+  # First we check if /dev/urandom is available.
+  # We used to have a method_urandom.  /dev/urandom can generate numbers fast
+  # But selecting numbers in ranges etc made for a fairly slow method
+  if [ -c /dev/urandom ] && command -v od >/dev/null 2>&1; then
+    # Get a string of bytes from /dev/urandom using od
+    od -N 4 -A n -t uL /dev/urandom | tr -d " "
+  # Otherwise we try to get another seed
+  elif date '+%s' >/dev/null 2>&1; then
+    date '+%s'
+  elif command -v perl >/dev/null 2>&1; then
+    perl -e "print time"
+  elif command -v truss >/dev/null 2>&1 && [ "$(uname)" = SunOS ]; then
+    truss date 2>&1 | grep ^time | awk -F"= " '{print $2}'
+  elif command -v truss >/dev/null 2>&1 && [ "$(uname)" = FreeBSD ]; then
+    truss date 2>&1 | grep ^gettimeofday | cut -d "{" -f2 | cut -d "." -f1
+  # Otherwise, just pump out the raw date
+  else
+    date '+%Y%M%d%H%M%S'
+  fi
 }
 
 # This function ensures equal distribution for methods that don't support it
@@ -159,11 +152,11 @@ Fn_fill() {
   intFill=$($1 | Fn_unique)
 
   # Count how many unique integers we have generated
-  intCount=$(printf "%s\n" "${intFill}" | wc -l)
+  intCount=$(printf '%s\n' "${intFill}" | wc -l)
 
   # If we've generated enough to satisfy nCount, then we just print them out
   if [ "${intCount}" -ge "${nCount}" ]; then
-    printf "%s\n" "${intFill}" | head -n "${nCount}"
+    printf '%s\n' "${intFill}" | head -n "${nCount}"
     
   # Otherwise, we walk through a few steps to try and quickly fill the gap
   else
@@ -171,7 +164,7 @@ Fn_fill() {
     mkdir -p "${tmpDir}"
     
     # Now dump what we have to a temporary file
-    printf "%s\n" "${intFill}" > "${tmpDir}"/rnginit
+    printf '%s\n' "${intFill}" > "${tmpDir}"/rnginit
 
     # Until we have our full set of random integers,
     # Keep throwing random ints into the temporary file
@@ -182,22 +175,6 @@ Fn_fill() {
 
     # Now that the full integer set is built, dump it out
     Fn_unique < "${tmpDir}"/rnginit | head -n "${nCount}"
-  fi
-}
-
-# Because 'date +%s' isn't entirely portable, we try other methods to get the epoch
-Fn_getEpoch() {
-  if date '+%s' &>/dev/null; then
-    date '+%s'
-  elif command -v perl &>/dev/null; then
-    perl -e "print time"
-  elif command -v truss >/dev/null 2>&1 && [ "$(uname)" = SunOS ]; then
-    truss date 2>&1 | grep ^time | awk -F"= " '{print $2}'
-  elif command -v truss >/dev/null 2>&1 && [ "$(uname)" = FreeBSD ]; then
-    truss date 2>&1 | grep ^gettimeofday | cut -d "{" -f2 | cut -d "." -f1
-  # Otherwise, just pump out the raw date
-  else
-    date '+%Y%M%d%H%M%S'
   fi
 }
 
@@ -242,7 +219,7 @@ fi
 
 # Function to generate numbers using 'gawk'
 method_gawk() {
-  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { print int(min+rand()*(max-min)); ++i} }'
+  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { printf "%d\n", int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using BSD 'jot'
@@ -255,7 +232,7 @@ method_jot() {
 # Function to generate numbers using 'nawk'
 # This used to also call 'mawk' but that was found to be vulnerable to repeating output
 method_nawk() {
-  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(Fn_getEpoch)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { printf "%d\n", int(min+rand()*(max-min)); ++i} }'
+  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(Fn_getSeed)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { printf "%d\n", int(min+rand()*(max-min)); ++i} }'
 }
 
 # Function to generate numbers using 'perl'
@@ -289,28 +266,20 @@ method_RANDOM() {
   done
 
   # We set the initial seed just in case we're using the LCG
-  # First we check if /dev/urandom is available.
-  # We used to have a method_urandom.  /dev/urandom can generate numbers fast
-  # But selecting numbers in ranges etc made for a fairly slow method
-  if [ -c /dev/urandom ] && command -v od >/dev/null 2>&1; then
-    # Get a string of bytes from /dev/urandom using od
-    rnSeed=$(od -N 4 -A n -t uL /dev/urandom | tr -d " ")
-  # Otherwise we try to get another seed
-  else
-    # First we try to get the epoch
-    rnSeed=$(Fn_getEpoch)
-  fi
+  rnSeed=$(Fn_getSeed)
 
   # Start a loop based on nCount.  I thought of other ways, but this works easier
   # and can be made more portable if testing proves the need to do so
-  while [ "${nCount}" -gt 0 ]; do
+  while [ "${nCount}" -gt  0 ]; do
     # Start generating seeds for the LCG
     rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
     # If the RANDOM variable is blank, we failover to the LCG
     # We print as an unsigned integer to ensure that it's a positive number
-    RANDOM="${RANDOM:-$(printf "%u\n" "$(( rnSeed / 65536 ))")}"
+    # shellcheck disable=SC2169
+    RANDOM="${RANDOM:-$(printf '%u\n' "$(( rnSeed / 65536 ))")}"
     # Set our initial bitlength
     rndBitlen=15
+    # shellcheck disable=SC2169
     rnd="${RANDOM}" # Capture one output sample of RANDOM
 
     while [ "${rndBitlen}" -lt "${nBitlen}" ]; do
@@ -318,10 +287,12 @@ method_RANDOM() {
       rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
       # If two invocations of RANDOM are the same, then we're working with a
       # shell that does not support $RANDOM.  So we use the LCG and rotate $RANDOM
+      # shellcheck disable=SC2169
       if [ "${RANDOM}" = "${RANDOM}" ]; then
-        RANDOM=$(printf "%u\n" "$(( rnSeed / 65536 ))")
+        RANDOM=$(printf '%u\n' "$(( rnSeed / 65536 ))")
       fi
       # Bitshift RANDOM to the left to stack it i.e. 15 int -> 30 int -> 45 int etc
+      # shellcheck disable=SC2169
       rnd=$(( rnd<<15|RANDOM ))
       # Keep stacking until the while loop exits
       rndBitlen=$(( rndBitlen + 15 ))
@@ -331,9 +302,8 @@ method_RANDOM() {
 
     # Next we test if the number we've generated fits into our range.  If so,
     # then we can use it and iterate the while loop
-    # May need to add a check to
     if [ $((nRandShift + nMin)) -le "${nMax}" ]; then
-      printf "%u\n" "$(( nRandShift + nMin ))"
+      printf '%u\n' "$(( nRandShift + nMin ))"
       nCount=$(( nCount - 1 ))
     fi
   done
@@ -365,20 +335,63 @@ method_shuf() {
   fi
 }
 
+# Function to attempt random integer generation using a basic-ish Marsaglia xorshift
+# This function also attempts to independently handle modulo de-biasing
+##############################################
+# Currently in testing!  Feedback appreciated!
+##############################################
 method_xorshift() {
-  int=$(Fn_getEpoch)
-  while (( int >= nMax )); do
-    int=$(( int / 2 ))
-  done
-  mod=$(( $nMax + 1 - $nMin ))
-  count=0
-  while (( count < nCount )); do
+  # Figure out the triples required for the xorshift generator
+  # 8 bit and 16 bit triples sourced from
+  # http://www.arklyffe.com/main/2010/08/29/xorshift-pseudorandom-number-generator/
+  if [ "${nMax}" -ge 255 ]; then
+    # 8 bit (1 - 255 )
+    shifta=7
+    shiftb=5
+    shiftc=3
+  elif [ "${nMax}" -le 65535 ]; then
+    # 16 bit (1 - 65535)
+    shifta=13
+    shiftb=9
+    shiftc=7
+  elif [ "${nMax}" -le 4294967295 ]; then
+    # 32 bit (1 - 4294967295)
+    shifta=13
+    shiftb=17
+    shiftc=5
+  else
+    # 63 bit (1 - 9223372036854775807)
+    shifta=13
+    shiftb=7
+    shiftc=17
+  fi
+
+  # In order to enable modulo debiasing, we figure out the number of problematic integers 
+  # that we need to skip in order to bring plain old modulo usage back into uniform alignment
+  # This is massively faster than naive rejection sampling
+  # Credit where it is due:
+  # http://funloop.org/post/2015-02-27-removing-modulo-bias-redux.html
+  # https://blog.hartwork.org/?p=2900
+  # This calculation is careful to not invoke negative integer overflow
+  skipInts=$(( ((maxRand % nMax) + 1) % nMax ))
+
+  # Grab our initial integer from Fn_getSeed to feed to the RNG
+  int=$(Fn_getSeed)
+
+  # Start our count loop
+  while [ "${nCount}" -gt 0 ]; do
+    # xorshift with preselected triples
     int=$(( int ^ int << shifta ))
     int=$(( int ^ int >> shiftb ))
     int=$(( int ^ int << shiftc ))
-    int=$(( $int % $mod ))
-    printf "%u\n" "$(( $int + $nMin ))"
-    let count++
+     
+     # If our generated int is larger than the number of problematic ints
+     # Then we can modulo it safely, otherwise drop it and generate again
+     # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
+     if [ "${int}" -gt "${skipInts}" ]; then
+      printf '%u\n' "$(( (int % nMax) + 1 ))"
+      nCount=$(( nCount - 1 ))
+    fi
   done
 }
 
@@ -389,7 +402,7 @@ if ! command -v seq >/dev/null 2>&1; then
   seq() {
     i=$1
     while [ "$i" -ne "$(( $2 + 1 ))" ]; do
-      printf "%s\n" "$i"
+      printf '%s\n' "$i"
       i=$(( i + 1 ))
     done
   }
@@ -407,7 +420,7 @@ if command -v shuf > /dev/null 2>&1; then
 # If we're on a BSD based host, likely 'jot' is available, so let's use it
 # 'jot' is limited to 2^31-1 by the arc4random algorithm
 # so we also test for an nMax limit based on that
-elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -gt 2147483647 ]; then
   Fn_debug jot
   # Repeating generated numbers is the default behaviour of 'jot'
   Fn_repeat method_jot
@@ -439,13 +452,14 @@ elif command -v nawk > /dev/null 2>&1; then
 
 # No shuf, jot, perl, python, gawk or nawk?  Fear not!  
 # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
-elif (( nMax < 1152921504606846975 )); then
+elif [ "${nMax}" -gt 1152921504606846975 ]; then
+#else
   Fn_debug Skoruppa Bitshift
   Fn_repeat method_RANDOM
   
 # Provide an outright failure condition just in case
-else
-  die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
+#else
+#  die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
 fi | Fn_zeropad
 
 exit 0
