@@ -88,6 +88,9 @@ while getopts ":dDhm:M:N:rz" Flags; do
   esac
 done
 
+# In case nMax is blank, default to maxRand
+[ -z "${nMax}" ] && nMax="${maxRand}"
+
 # Easter Egg
 if printf '%d\n' "${nMax}" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
   die "[INFO] rand: Come on now, stop being silly." \
@@ -124,7 +127,7 @@ Fn_getSeed() {
   # But selecting numbers in ranges etc made for a fairly slow method
   if [ -c /dev/urandom ] && command -v od >/dev/null 2>&1; then
     # Get a string of bytes from /dev/urandom using od
-    od -N 4 -A n -t uL /dev/urandom | tr -d " "
+    od -N 4 -A n -t uL /dev/urandom | tr -d '\n' | awk '{$1=$1+0};1'
   # Otherwise we try to get another seed
   elif date '+%s' >/dev/null 2>&1; then
     date '+%s'
@@ -344,23 +347,23 @@ method_xorshift() {
   # Figure out the triples required for the xorshift generator
   # 8 bit and 16 bit triples sourced from
   # http://www.arklyffe.com/main/2010/08/29/xorshift-pseudorandom-number-generator/
-  if [ "${nMax}" -ge 255 ]; then
-    # 8 bit (1 - 255 )
+  if [ "${nMax}" -le 255 ]; then
+    Fn_debug 8 bit \(1 - 255 \)
     shifta=7
     shiftb=5
     shiftc=3
   elif [ "${nMax}" -le 65535 ]; then
-    # 16 bit (1 - 65535)
+    Fn_debug 16 bit \(1 - 65535\)
     shifta=13
     shiftb=9
     shiftc=7
   elif [ "${nMax}" -le 4294967295 ]; then
-    # 32 bit (1 - 4294967295)
+    Fn_debug 32 bit \(1 - 4294967295\)
     shifta=13
     shiftb=17
     shiftc=5
   else
-    # 63 bit (1 - 9223372036854775807)
+    Fn_debug 63 bit \(1 - 9223372036854775807\)
     shifta=13
     shiftb=7
     shiftc=17
@@ -389,7 +392,7 @@ method_xorshift() {
      # Then we can modulo it safely, otherwise drop it and generate again
      # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
      if [ "${int}" -gt "${skipInts}" ]; then
-      printf '%u\n' "$(( (int % nMax) + 1 ))"
+      printf '%d\n' "$(( (int % nMax) + 1 ))"
       nCount=$(( nCount - 1 ))
     fi
   done
@@ -411,54 +414,65 @@ fi
 ###############################################################################
 # Main
 ###############################################################################
-# Cater for GNU shuf, nice and fast
-# This function will also cater for the repeat option natively
-if command -v shuf > /dev/null 2>&1; then
-  Fn_debug shuf
-  method_shuf
+main() {
+  # Cater for GNU shuf, nice and fast
+  # This function will also cater for the repeat option natively
+  if command -v shuf > /dev/null 2>&1; then
+    Fn_debug shuf
+    method_shuf
 
-# If we're on a BSD based host, likely 'jot' is available, so let's use it
-# 'jot' is limited to 2^31-1 by the arc4random algorithm
-# so we also test for an nMax limit based on that
-elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
-  Fn_debug jot
-  # Repeating generated numbers is the default behaviour of 'jot'
-  Fn_repeat method_jot
+  # If we're on a BSD based host, likely 'jot' is available, so let's use it
+  # 'jot' is limited to 2^31-1 by the arc4random algorithm
+  # so we also test for an nMax limit based on that
+  elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+    Fn_debug jot
+    # Repeating generated numbers is the default behaviour of 'jot'
+    Fn_repeat method_jot
 
-# Now we start going less-native and try perl.  Very likely to be there,   
-# so very likely this will be a commonly used option
-elif command -v perl > /dev/null 2>&1; then
-  Fn_debug perl
-  Fn_repeat method_perl
+  # Now we start going less-native and try perl.  Very likely to be there,   
+  # so very likely this will be a commonly used option
+  elif command -v perl > /dev/null 2>&1; then
+    Fn_debug perl
+    Fn_repeat method_perl
 
-# Otherwise, we try python
-# We need to ensure that /dev/urandom is available, as python sources it
-elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
-  Fn_debug python
-  Fn_repeat method_python
+  # Otherwise, we try python
+  # We need to ensure that /dev/urandom is available, as python sources it
+  elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
+    Fn_debug python
+    Fn_repeat method_python
 
-# No perl or python?  Let's try 'gawk'
-elif command -v gawk > /dev/null 2>&1; then
-  Fn_debug gawk
-  Fn_repeat method_python
-  
-# No gawk?  Surely 'nawk' is hanging around?  Works very similar, but 
-# because we don't have systime() we have to replicate it as a seed for srand().
-elif command -v nawk > /dev/null 2>&1; then
-  Fn_debug nawk
-  Fn_repeat method_nawk
+  # No perl or python?  Let's try 'gawk'
+  elif command -v gawk > /dev/null 2>&1; then
+    Fn_debug gawk
+    Fn_repeat method_python
+    
+  # No gawk?  Surely 'nawk' is hanging around?  Works very similar, but 
+  # because we don't have systime() we have to replicate it as a seed for srand().
+  elif command -v nawk > /dev/null 2>&1; then
+    Fn_debug nawk
+    Fn_repeat method_nawk
 
-# Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
+  # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
 
-# No shuf, jot, perl, python, gawk or nawk?  Fear not!  
-# Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
-elif [ "${nMax}" -lt 1152921504606846975 ]; then
-  Fn_debug Skoruppa Bitshift
-  Fn_repeat method_RANDOM
-  
-# Provide an outright failure condition just in case
-else
-  die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
-fi | Fn_zeropad
+  # Next we try one of our own methods using a textbook xorshift
+  # coupled with a not-so-textbook modulo debias method
+  elif [ $(( nCount ^ nCount )) -eq 0 ] >/dev/null 2>&1; then
+    Fn_debug xorshift
+    method_xorshift
 
-exit 0
+  # No shuf, jot, perl, python, gawk or nawk?  AND xorshift isn't working?! Fear not!  
+  # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
+  elif [ "${nMax}" -lt 1152921504606846975 ]; then
+    Fn_debug Skoruppa Bitshift
+    Fn_repeat method_RANDOM
+    
+  # Provide an outright failure condition just in case
+  else
+    die "[ERROR] rand: Unable to find a suitable method to generate a random integer"
+  fi | Fn_zeropad
+
+  exit 0
+}
+
+# Call the main function
+main
