@@ -271,9 +271,9 @@ method_RANDOM() {
   # We set the initial seed just in case we're using the LCG
   rnSeed=$(Fn_getSeed)
 
-  # Start a loop based on nCount.  I thought of other ways, but this works easier
-  # and can be made more portable if testing proves the need to do so
-  while [ "${nCount}" -gt 0 ]; do
+  # Start a loop based on nCount.
+  count=0
+  while [ "${count}" -lt "${nCount}" ]; do
     # Start generating seeds for the LCG
     rnSeed=$(( (1103515245 * rnSeed + 12345) % 2147483648 ))
     # If the RANDOM variable is blank, we failover to the LCG
@@ -307,7 +307,7 @@ method_RANDOM() {
     # then we can use it and iterate the while loop
     if [ $((nRandShift + nMin)) -le "${nMax}" ]; then
       printf '%u\n' "$(( nRandShift + nMin ))"
-      nCount=$(( nCount - 1 ))
+      count=$(( count + 1 ))
     fi
   done
 }
@@ -382,7 +382,8 @@ method_xorshift() {
   int=$(Fn_getSeed)
 
   # Start our count loop
-  while [ "${nCount}" -gt 0 ]; do
+  count=0
+  while [ "${count}" -lt "${nCount}" ]; do
     # xorshift with preselected triples
     int=$(( int ^ int << shifta ))
     int=$(( int ^ int >> shiftb ))
@@ -393,7 +394,7 @@ method_xorshift() {
      # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
      if [ "${int}" -gt "${skipInts}" ]; then
       printf '%d\n' "$(( (int % nMax) + 1 ))"
-      nCount=$(( nCount - 1 ))
+      count=$(( count + 1 ))
     fi
   done
 }
@@ -458,7 +459,7 @@ main() {
   # coupled with a not-so-textbook modulo debias method
   elif [ $(( nCount ^ nCount )) -eq 0 ] >/dev/null 2>&1; then
     Fn_debug xorshift
-    method_xorshift
+    Fn_repeat method_xorshift
 
   # No shuf, jot, perl, python, gawk or nawk?  AND xorshift isn't working?! Fear not!  
   # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
