@@ -48,6 +48,10 @@ else
   maxRand=32767
 fi
 
+# Override for mksh, which uses 32-bit arithmetic
+# This test has to be separate to keep dash happy
+echo "${KSH_VERSION}" | grep MIRBSD >/dev/null 2>&1 && maxRand=2147483647
+
 # Getopts
 while getopts ":dDhm:M:N:rz" Flags; do
   case "${Flags}" in
@@ -223,6 +227,7 @@ method_gawk() {
 # Function to generate numbers using BSD 'jot'
 method_jot() {
   # Some versions of 'jot' have uniform distribution, others do not.
+  # See: https://unix.stackexchange.com/a/241199
   # This is a lo-fi approach to try and cater for both
   jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | sed "s/$(( nMax + 1 ))/$(( nMax ))/"
 }
@@ -333,62 +338,34 @@ method_shuf() {
   fi
 }
 
-# Function to attempt random integer generation using a basic-ish Marsaglia xorshift
-# This function also attempts to independently handle modulo de-biasing
-##############################################
-# Currently in testing!  Feedback appreciated!
-##############################################
-method_xorshift() {
-  # Figure out the triples required for the xorshift generator
-  # 8 bit and 16 bit triples sourced from
-  # http://www.arklyffe.com/main/2010/08/29/xorshift-pseudorandom-number-generator/
-  if [ "${nMax}" -le 255 ]; then
-    Fn_debug 8 bit \(1 - 255 \)
-    shifta=7
-    shiftb=5
-    shiftc=3
-  elif [ "${nMax}" -le 65535 ]; then
-    Fn_debug 16 bit \(1 - 65535\)
-    shifta=13
-    shiftb=9
-    shiftc=7
-  elif [ "${nMax}" -le 4294967295 ]; then
-    Fn_debug 32 bit \(1 - 4294967295\)
-    shifta=13
-    shiftb=17
-    shiftc=5
-  else
-    Fn_debug 63 bit \(1 - 9223372036854775807\)
-    shifta=13
-    shiftb=7
-    shiftc=17
-  fi
-
-  # In order to enable modulo debiasing, we figure out the number of problematic integers 
-  # that we need to skip in order to bring plain old modulo usage back into uniform alignment
-  # This is massively faster than naive rejection sampling
-  # Credit where it is due:
-  # http://funloop.org/post/2015-02-27-removing-modulo-bias-redux.html
+# Function to attempt random integer generation using a textbook Vigna xorshift128+
+# This RNG is also coupled with modulo de-biasing loosely from arc4random_uniform
+method_xorshift128plus() {
+  # We attempt to de-bias our modulo as explained here and here:
+  # http://funloop.org/post/2013-07-12-generating-random-numbers-without-modulo-bias.html
   # https://blog.hartwork.org/?p=2900
   # This calculation is careful to not invoke negative integer overflow
   skipInts=$(( ((maxRand % nMax) + 1) % nMax ))
 
-  # Grab our initial integer from Fn_getSeed to feed to the RNG
-  int=$(Fn_getSeed)
+  # Our initial seed integers, one as per RFC 1149.5, the other from Fn_getseed
+  int0=4
+  int1=$(Fn_getSeed)
 
   # Start our count loop
   count=0
   while [ "${count}" -lt "${nCount}" ]; do
-    # xorshift with preselected triples
-    int=$(( int ^ int << shifta ))
-    int=$(( int ^ int >> shiftb ))
-    int=$(( int ^ int << shiftc ))
+    # xorshift128+ with preselected triples
+    int1=$(( int1 ^ int1 << 23 ))
+    int1=$(( int1 ^ int1 >> 17 ))
+    int1=$(( int1 ^ int0 ))
+    int1=$(( int1 ^ int0 >> 26 ))
+    seed1="${int1}"
      
-     # If our generated int is larger than the number of problematic ints
-     # Then we can modulo it safely, otherwise drop it and generate again
-     # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
-     if [ "${int}" -ge "${skipInts}" ]; then
-      printf '%d\n' "$(( (int % nMax) + 1 ))"
+    # If our generated int is larger than the number of problematic ints
+    # Then we can modulo it safely, otherwise drop it and generate again
+    # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
+    if [ $(( (int0 + seed1) >= skipInts )) ]; then
+      printf '%u\n' "$(( ((int0 + seed1) % nMax) + 1 ))"
       count=$(( count + 1 ))
     fi
   done
@@ -420,7 +397,7 @@ main() {
   # If we're on a BSD based host, likely 'jot' is available, so let's use it
   # 'jot' is limited to 2^31-1 by the arc4random algorithm
   # so we also test for an nMax limit based on that
-  elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -lt 2147483647 ]; then
+  elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -le 2147483647 ]; then
     Fn_debug jot
     # Repeating generated numbers is the default behaviour of 'jot'
     Fn_repeat method_jot
@@ -450,11 +427,11 @@ main() {
 
   # Note: oawk does not have srand() or rand(), it's more trouble than it's worth so let's move on
 
-  # Next we try one of our own methods using a textbook xorshift
-  # coupled with a not-so-textbook modulo debias method
+  # Next we try one of our own methods using a textbook xorshift128+
+  # coupled with a semi-not-so-textbook modulo debias method
   elif [ $(( nCount ^ nCount )) -eq 0 ] >/dev/null 2>&1; then
-    Fn_debug xorshift
-    Fn_repeat method_xorshift
+    Fn_debug xorshift128+
+    Fn_repeat method_xorshift128plus
 
   # No shuf, jot, perl, python, gawk or nawk?  AND xorshift isn't working?! Fear not!  
   # Let's try for a POSIX friendly shell solution.  This is limited to 2^60-1
