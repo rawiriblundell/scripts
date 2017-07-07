@@ -104,7 +104,8 @@ fi
 
 # If repeat is not set, then nCount cannot be higher than nMax
 if [ "${repeat}" = "false" ] && [ "${nCount}" -gt "${nMax}" ]; then
-  printf '%s\n' "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax}).  Count will be: ${nMax}."
+  printf '%s\n' "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax})." \
+    "Count will be: ${nMax}.  Consider the '-r' option." 1>&2
   nCount="${nMax}"
 fi
 
@@ -116,7 +117,7 @@ export nMin nMax nCount
 ################################################################################
 # This function simply outputs the method used for random integer generation
 Fn_debug() {
-  [ "${debug}" = true ] && printf '%s\n' "[DEBUG] rand: Method used is '$*'"
+  [ "${debug}" = true ] && printf '%s\n' "[DEBUG] rand: Method used is '$*'" 1>&2
 }
 
 # Function to generate a reliable seed for whatever method requires one
@@ -392,7 +393,7 @@ method_xorshift() {
      # If our generated int is larger than the number of problematic ints
      # Then we can modulo it safely, otherwise drop it and generate again
      # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
-     if [ "${int}" -gt "${skipInts}" ]; then
+     if [ "${int}" -ge "${skipInts}" ]; then
       printf '%d\n' "$(( (int % nMax) + 1 ))"
       count=$(( count + 1 ))
     fi
