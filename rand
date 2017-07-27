@@ -247,8 +247,13 @@ method_perl() {
 method_python() {
   python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
   
-  # The alternative method below was tested but abandoned for now
-  # It fails with a Memory Error if nMax is too high
+  # Alternative option that loosely follows Daniel Lemire's advice here:
+  # http://lemire.me/blog/2016/03/21/ranged-random-number-generation-is-slow-in-python/
+  # The subtraction and addition to cater for specific boundaries appears to destroy any performance improvement though
+  # The numpy suggestion on that blogpost performed rather poorly for me (Python 2.7)
+  # python -c "for _ in xrange(${nCount}): import random; print int(random.random() * (${nMax} - ${nMin} + 1) + ${nMin})"
+    
+  # The alternative method below fails with a Memory Error if nMax is too high
   # I'll leave it here for prosperity though (note: it may require nMax = nMax + 1)
   #python -c "import random; numlist=list(range(${nMin},${nMax})); random.shuffle(numlist); print '\n'.join([str(int) for int in numlist])"
 }
