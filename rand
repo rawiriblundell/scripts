@@ -346,11 +346,16 @@ method_shuf() {
 # Function to attempt random integer generation using a textbook Vigna xorshift128+
 # This RNG is also coupled with modulo de-biasing loosely from arc4random_uniform
 method_xorshift128plus() {
-  # We attempt to de-bias our modulo as explained here and here:
+  # First, we need to calculate the range of integers we need to create
+  # i.e. convert from {x..y} to {0..n}
+  nRange=$(( nMax - nMin  + 1 ))
+  
+  # We attempt to de-bias our modulo as explained here and here and here:
   # http://funloop.org/post/2013-07-12-generating-random-numbers-without-modulo-bias.html
   # https://blog.hartwork.org/?p=2900
+  # https://medium.com/hownetworks/dont-waste-cycles-with-modulo-bias-35b6fdafcf94
   # This calculation is careful to not invoke negative integer overflow
-  skipInts=$(( ((maxRand % nMax) + 1) % nMax ))
+  skipInts=$(( (maxRand - nRange) % nRange ))
 
   # Our initial seed integers, one as per RFC 1149.5, the other from Fn_getseed
   int0=4
@@ -369,8 +374,9 @@ method_xorshift128plus() {
     # If our generated int is larger than the number of problematic ints
     # Then we can modulo it safely, otherwise drop it and generate again
     # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
+    # Then we simply add nMin to bring it back up into our desired range
     if [ $(( (int0 + seed1) >= skipInts )) ]; then
-      printf '%u\n' "$(( ((int0 + seed1) % nMax) + 1 ))"
+      printf '%u\n' "$(( ((int0 + seed1) % nRange) + nMin ))"
       count=$(( count + 1 ))
     fi
   done
