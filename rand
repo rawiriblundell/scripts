@@ -7,6 +7,7 @@
 #              No warranty or liability, but some attribution would be nice if it works well
 #              for you or you derive your own code.  Just as I've attributed inspiration below.
 # Date:        20160222
+# Requires:    At the very least, an interpreter with bitshifting.  This isn't strict POSIX.
 # Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
 #              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
 ###############################################################################
