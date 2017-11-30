@@ -204,14 +204,16 @@ Fn_unique() {
   fi
 }
 
-# Setup the zeropad function
+# Setup the zeropad function, which converts numbers under 10 e.g. '9' becomes '09'
 if [ "${zeroPad}" = true ]; then
   Fn_zeropad() {
     # It appears that 'awk' is more portable vs sed 's/\<[0-9]\>/0&/'
     if command -v awk >/dev/null 2>&1; then
       awk '{$1 = sprintf("%02d", $1); print}'
+    elif command -v xargs >/dev/null 2>&1; then
+      xargs printf '%02d\n'
     else
-      die "[ERROR] rand: 'awk' is required for zero-padding but was not found."
+      die "[ERROR] rand: 'awk' or 'xargs' is required for zero-padding but neither were found."
     fi
   }
 else
