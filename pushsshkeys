@@ -1,7 +1,7 @@
 #!/bin/bash
 # Purpose: This is a wrapper script for expect.sshkeys
 #          This does some pre-req checks and distributes sshkeys
-#	         to a List of servers in a required file: "serverList"
+#          to a List of servers in a required file: "serverList"
 
 # Author:  Rawiri Blundell, Datacom
 # Date:    June 2014
@@ -11,41 +11,48 @@ serverList=serverlist
 adminPwd="${PWD}/.pwdfiler"
 compareStrings=1
 
+# Basic Horizontal Rule function
+hr() {
+  printf '%*s\n' "${1:-$COLUMNS}" | tr ' ' "${2:-#}"
+}
+
 # Check that $serverList exists
-if [ ! -f "${serverList}" ]; then
-  echo "File '${serverList}' is required and doesn't exist where I expect it"
-  echo " Please ensure this file is present in ${PWD} "
+if [[ ! -f "${serverList}" ]]; then
+  printf '%s\n' "File '${serverList}' is required and doesn't exist where I expect it" \
+    "Please ensure this file is present in ${PWD}"
   exit 1
 fi
 
 # Greet
-echo "========================================"
-echo -e "\tYou are running ${0##*/}"
-echo "========================================"
-echo -e "\nThis script attempts to distribute your sshkey across"
-echo " all the servers in the file '${serverList}'"
-echo -e "\nThis assumes you have access on all servers listed, using the same password"
-echo "If not, consider exiting and sorting that out."
+hr 40
+printf '\t%s\n' "You are running ${0##*/}"
+hr 40
+printf '%s\n' "" "This script attempts to distribute your sshkey across" \
+  " all the servers in the file '${serverList}'" \
+  "" "This assumes you have access on all servers listed, using the same password" \
+  "If not, consider exiting and sorting that out."
 read -rp "Press [Enter] to continue or Ctrl-C to exit"
 
 #### SSH Stuff ####
 # Check for sshkey and if one isn't found, generate one
+# Possible TO-DO: Build in automatic ed25519 tests (both local and remote)
 if [[ ! -f ~/.ssh/id_rsa.pub ]]; then
-	echo "I could not find an sshkey, let me generate one for you..."
-	ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
+  printf '%s\n' "I could not find an sshkey, let me generate one for you..."
+  ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
+  #ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
 fi
 
-# Get ~/.ssh/known_hosts up to scratch, this should prevent the need to depend on expect
+# Get ~/.ssh/known_hosts up to scratch, this should reduce the need to depend on expect
 # to take care of interacting with remote hosts for fingerprinting
 
 # First, notify the user
-echo "Please wait a few minutes while I perform maintenance on your known_hosts file, this can take a while..."
+printf '%s\n' "Please wait while I perform maintenance on your known_hosts file..."
 
 # Backup the current known_hosts file
 cp ~/.ssh/known_hosts{,.old}
 
 # Generate a temporary known_hosts file
-ssh-keyscan -t rsa,dsa -f "${serverList}" > ~/.ssh/known_hosts.new
+ssh-keyscan -t rsa,ed25519 -f "${serverList}" > ~/.ssh/known_hosts.new
 
 # Because the serverlist file can be incomplete for whatever reason,
 # instead of leaving it there, we now uniq the two files into one
@@ -61,10 +68,10 @@ rm -f "${adminPwd}"
 
 # Prompt for the authentication password twice
 while [[ "${compareStrings}" -gt "0" ]]; do
-  echo "================================"
-  echo -ne "Please enter your password for authenticating and press [Enter]: "
+  hr 40
+  printf '%s' "Please enter your password for authenticating and press [Enter]: "
   read -rs pwdin1
-  echo -ne "\nPlease confirm your password and press [Enter]: "
+  printf '%s' "Please confirm your password and press [Enter]: "
   read -rs pwdin2
 
   # Compare the two, if they don't match, try again
@@ -87,9 +94,9 @@ chmod 600 "${adminPwd}"
 for host in $(<"${serverList}"); do
   # We now call an expect script that essentially automates the following
   #ssh-copy-id -i /home/$user/.ssh/id_rsa.pub "${host}"
-	./expect.sshkeys "${host}";
+  ./expect.sshkeys "${host}";
 
-  # Alternative method that might be figured out:
+  # Alternative method that might be figured out in the future:
   #cat ~/.ssh/id_rsa.pub | ssh $user@$host "cat - >> .ssh/authorized_keys"
 done
 
