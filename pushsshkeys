@@ -34,12 +34,25 @@ printf '%s\n' "" "This script attempts to distribute your sshkey across" \
 read -rp "Press [Enter] to continue or Ctrl-C to exit"
 
 #### SSH Stuff ####
-# Check for sshkey and if one isn't found, generate one
-# Possible TO-DO: Build in automatic ed25519 tests (both local and remote)
+# Check for sshkeys and if not found, generate
+
+# Does the local host support ed25519?
+# Ancient versions of ssh don't have '-Q' so also likely won't have ed25519
+# If you wanted a more portable test: man ssh | grep ed25519
+if ssh -Q key 2>/dev/null | grep -q ed25519; then
+  localED25519=true
+fi
+
+# If the local host supports ed25519 and doesn't have a key, generate it
+if [[ "${localED25519}" = "true" ]] && [[ ! -f ~/.ssh/id_ed25519.pub ]]; then
+  printf '%s\n' "I could not find an ed25519 sshkey, let me generate one for you..."
+  ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+fi
+
+# Let's also generate an RSA key with 2048 bits for legacy purposes
 if [[ ! -f ~/.ssh/id_rsa.pub ]]; then
-  printf '%s\n' "I could not find an sshkey, let me generate one for you..."
+  printf '%s\n' "I could not find an RSA sshkey, let me generate one for you..."
   ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
-  #ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
 fi
 
 # Get ~/.ssh/known_hosts up to scratch, this should reduce the need to depend on expect
@@ -49,13 +62,18 @@ fi
 printf '%s\n' "Please wait while I perform maintenance on your known_hosts file..."
 
 # Backup the current known_hosts file
-cp ~/.ssh/known_hosts{,.old}
+# We filter out hosts that we're going to check anyway
+# This auto-updates the entries (e.g. server rebuilds are catered for)
+grep -vif "${serverList}" > ~/.ssh/known_hosts > ~/.ssh/known_hosts{,.old}
 
-# Generate a temporary known_hosts file
-ssh-keyscan -t rsa,ed25519 -f "${serverList}" > ~/.ssh/known_hosts.new
+# Generate a temporary known_hosts file from the serverlist
+if [[ "${localED25519}" = "true" ]]
+  ssh-keyscan -t rsa,ed25519 -f "${serverList}" > ~/.ssh/known_hosts.new 2>/dev/null
+else
+  ssh-keyscan -t rsa -f "${serverList}" > ~/.ssh/known_hosts.new 2>/dev/null
+fi
 
-# Because the serverlist file can be incomplete for whatever reason,
-# instead of leaving it there, we now uniq the two files into one
+# Now cat the old and new files together
 cat ~/.ssh/known_hosts.old ~/.ssh/known_hosts.new | sort | uniq -u > ~/.ssh/known_hosts
 
 # Double check perms
