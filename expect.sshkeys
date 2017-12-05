@@ -4,7 +4,11 @@ set timeout 5
 # Server is the first argument after the command e.g. expect.sshkeys server1
 set server [lindex $argv 0]
 
-# Ideally this would be [lindex $argv 1] e.g. expect.sshkeys server1 username
+# Set the key type (ed25519 or rsa) and default to rsa
+set keytype [lindex $argv 1]
+if {$keytype eq ""} {set keytype rsa}
+
+# Ideally this would be [lindex $argv 2] e.g. expect.sshkeys server1 username
 # But for most times I've used this, $(whoami) is appropriate
 set user [exec whoami]
 
@@ -27,8 +31,8 @@ expect {
         send_user "INFO: Unable to make initial connection to $server\n"
         exit 1
     }
-    # RSA warnings first, more reliable than expecting yes/no
-    -re "RSA key fingerprint" {
+    # key fingerprint warnings first, more reliable than expecting yes/no
+    -re "key fingerprint is" {
         send "yes\r"
         exp_continue
     }
@@ -48,7 +52,7 @@ expect {
     # and invoke ssh-copy-id
     "*?assword:*" {
         send \003
-        spawn ssh-copy-id -i /home/$user/.ssh/id_rsa.pub $server
+        spawn ssh-copy-id -i /home/$user/.ssh/id_$keytype.pub $server
         expect {
             # Set default behaviour
             default {
@@ -89,8 +93,8 @@ expect {
         send_user "INFO: Unable to make second connection to $server\n"
         exit 1
     }
-    # RSA warnings again, just in case the previous expect dealt with an expired entry
-    -re "RSA key fingerprint" {
+    # key fingerprint warnings again, just in case the previous expect dealt with an expired entry
+    -re "key fingerprint is" {
         send "yes\r"
         exp_continue
     }
@@ -103,7 +107,7 @@ expect {
     # and invoke ssh-copy-id
     "*?assword:*" {
         send \003
-        spawn ssh-copy-id -i /home/$user/.ssh/id_rsa.pub $server
+        spawn ssh-copy-id -i /home/$user/.ssh/id_$keytype.pub $server
         expect {
             # Set default behaviour
                 default {
