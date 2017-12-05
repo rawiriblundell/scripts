@@ -64,7 +64,7 @@ printf '%s\n' "Please wait while I perform maintenance on your known_hosts file.
 # Backup the current known_hosts file
 # We filter out hosts that we're going to check anyway
 # This auto-updates the entries (e.g. server rebuilds are catered for)
-grep -vif "${serverList}" > ~/.ssh/known_hosts > ~/.ssh/known_hosts{,.old}
+grep -vif "${serverList}" ~/.ssh/known_hosts > ~/.ssh/known_hosts{,.old}
 
 # Generate a temporary known_hosts file from the serverlist
 if [[ "${localED25519}" = "true" ]]; then
@@ -112,7 +112,11 @@ chmod 600 "${adminPwd}"
 for host in $(<"${serverList}"); do
   # We now call an expect script that essentially automates the following
   #ssh-copy-id -i /home/$user/.ssh/id_rsa.pub "${host}"
-  ./expect.sshkeys "${host}";
+  if grep "${host}" ~/.ssh/known_hosts | grep -q ed25519; then
+    ./expect.sshkeys "${host}" ed25519
+  else
+    ./expect.sshkeys "${host}" rsa
+  fi
 
   # Alternative method that might be figured out in the future:
   #cat ~/.ssh/id_rsa.pub | ssh $user@$host "cat - >> .ssh/authorized_keys"
