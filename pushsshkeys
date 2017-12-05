@@ -67,7 +67,7 @@ printf '%s\n' "Please wait while I perform maintenance on your known_hosts file.
 grep -vif "${serverList}" > ~/.ssh/known_hosts > ~/.ssh/known_hosts{,.old}
 
 # Generate a temporary known_hosts file from the serverlist
-if [[ "${localED25519}" = "true" ]]
+if [[ "${localED25519}" = "true" ]]; then
   ssh-keyscan -t rsa,ed25519 -f "${serverList}" > ~/.ssh/known_hosts.new 2>/dev/null
 else
   ssh-keyscan -t rsa -f "${serverList}" > ~/.ssh/known_hosts.new 2>/dev/null
