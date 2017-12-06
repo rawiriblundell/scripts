@@ -85,7 +85,7 @@ chmod 600 ~/.ssh/known_hosts
 rm -f "${adminPwd}"
 
 # Prompt for the authentication password twice
-while [[ "${compareStrings}" -gt "0" ]]; do
+while (( compareStrings > 0 )); do
   hr 40
   printf '%s' "Please enter your password for authenticating and press [Enter]: "
   read -rs pwdin1
