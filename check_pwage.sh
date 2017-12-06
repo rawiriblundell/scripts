@@ -30,7 +30,7 @@ Dashes="-----------------------------"
 # Set the default email address
 # This is essentially a dummy variable as $Email needs to be true for it to be used
 # It's intended that one day '-e' alone will default to this and '-e some@email.address' behaves too.
-EmailAddr=unixsysadm@acc.co.nz
+EmailAddr=root@somecompany.tld
 
 # Set the default exit code
 ExitCode=0
