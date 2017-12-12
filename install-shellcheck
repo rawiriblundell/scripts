@@ -20,7 +20,7 @@
 
 # Check that we're root
 if [[ ! ${EUID} = 0 ]]; then
-  printf "%s\n" "ERROR: This script must be run as root or with appropriate sudo rights."
+  printf '%s\n' "ERROR: This script must be run as root or with appropriate sudo rights."
   exit 1
 fi
 
@@ -38,7 +38,7 @@ localedef -i en_US -f UTF-8 en_US.UTF-8
 ################################################################################
 
 # First we blindly install our dependencies
-printf "%s\n" "Installing dependencies, please wait..."
+printf '%s\n' "Installing dependencies, please wait..."
 if command -v apt-get &>/dev/null; then
   apt-get -y install nginx php5 php5-fpm cabal-install zlib1g-dev
   
@@ -156,15 +156,15 @@ cd - &>/dev/null || exit 1
 if command -v systemctl &>/dev/null; then
   systemctl restart nginx 
   systemctl restart php5-fpm
-  printf "%s\n" "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
+  printf '%s\n' "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
   exit 0
 elif command -v service &>/dev/null; then
   service nginx restart
   service php5-fpm restart
-  printf "%s\n" "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
+  printf '%s\n' "I think I've got it setup now.  Please visit http://$(hostname -I) and check for any errors."
   exit 0
 else
-  printf "%s\n" "ERROR: Unable to find 'systemctl' or 'service' in my path." \
+  printf '%s\n' "ERROR: Unable to find 'systemctl' or 'service' in my path." \
     "Please restart the nginx and php5-fpm services manually."
   exit 1
 fi
