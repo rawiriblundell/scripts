@@ -55,16 +55,25 @@ if [[ ! -f ~/.ssh/id_rsa.pub ]]; then
   ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa
 fi
 
+# Sanitise the serverlist file to prevent failures down the track
+while read -r host; do
+  if ! nslookup "${host}" >/dev/null 2>&1; then
+    sed -i "/^${host}$/d" "${serverList}"
+  fi
+done < "${serverList}"
+
 # Get ~/.ssh/known_hosts up to scratch, this should reduce the need to depend on expect
 # to take care of interacting with remote hosts for fingerprinting
 
 # First, notify the user
 printf '%s\n' "Please wait while I perform maintenance on your known_hosts file..."
 
-# Backup the current known_hosts file
-# We filter out hosts that we're going to check anyway
-# This auto-updates the entries (e.g. server rebuilds are catered for)
-grep -vif "${serverList}" ~/.ssh/known_hosts > ~/.ssh/known_hosts{,.old}
+if [[ -f ~/.ssh/known_hosts ]]; then
+  # Backup the current known_hosts file
+  # We filter out hosts that we're going to check anyway
+  # This auto-updates the entries (e.g. server rebuilds are catered for)
+  grep -vif "${serverList}" ~/.ssh/known_hosts > ~/.ssh/known_hosts.old
+fi
 
 # Generate a temporary known_hosts file from the serverlist
 if [[ "${localED25519}" = "true" ]]; then
@@ -74,7 +83,7 @@ else
 fi
 
 # Now cat the old and new files together
-cat ~/.ssh/known_hosts.old ~/.ssh/known_hosts.new | sort | uniq -u > ~/.ssh/known_hosts
+cat ~/.ssh/known_hosts.old ~/.ssh/known_hosts.new 2>/dev/null | sort | uniq -u > ~/.ssh/known_hosts
 
 # Double check perms
 chmod 600 ~/.ssh/known_hosts
@@ -89,7 +98,7 @@ while (( compareStrings > 0 )); do
   hr 40
   printf '%s' "Please enter your password for authenticating and press [Enter]: "
   read -rs pwdin1
-  printf '%s' "Please confirm your password and press [Enter]: "
+  printf '\n%s' "Please confirm your password and press [Enter]: "
   read -rs pwdin2
 
   # Compare the two, if they don't match, try again
