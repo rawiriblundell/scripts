@@ -413,6 +413,11 @@ main() {
   # Cater for GNU shuf, nice and fast
   # This function will also cater for the repeat option natively
   if command -v shuf > /dev/null 2>&1; then
+    # We disallow the 'shuf' step-in function, as it depends on this script
+    # Chicken, meet egg.  Bok bok cluck cluck.
+    if type shuf | head -n 1 | grep function > /dev/null 2>&1; then
+      continue
+    fi
     Fn_debug shuf
     method_shuf
 
