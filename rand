@@ -51,7 +51,9 @@ fi
 
 # Override for mksh, which uses 32-bit arithmetic
 # This test has to be separate to keep dash happy
-echo "${KSH_VERSION}" | grep MIRBSD >/dev/null 2>&1 && maxRand=2147483647
+case "${KSH_VERSION}" in
+  (*"MIRBSD"*) maxRand=2147483647;;
+esac
 
 # Getopts
 while getopts ":dDhm:M:N:rz:" Flags; do
