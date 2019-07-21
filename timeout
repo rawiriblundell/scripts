@@ -44,6 +44,9 @@ EOF
 exit 0
 }
 
+# If no further args are given, print our usage
+[ "${#}" = 0 ] && print_usage
+
 # Function to validate and convert durations into seconds
 # e.g. 'set_duration 10m' will output '600', i.e. 10 minutes = 600 seconds
 set_duration() {
