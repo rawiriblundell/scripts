@@ -1,0 +1,129 @@
+#!/bin/sh
+# Purpose:     This script attempts to POSIX-portably replicate the major
+#              features of the GNU and busybox 'timeout' commands
+# Author:      Rawiri Blundell
+# Copyright:   (c) 2019 - Beerware As-Is.
+#              No warranty or liability, but some attribution would be nice if 
+#              it works well for you or you derive your own code.
+#              Just as I've attributed inspiration below.
+# Date:        20190722
+################################################################################
+# Function to print our help/usage information
+print_usage() {
+cat << 'EOF'
+Usage:  timeout [-s SIG] [-k DURATION] [(-t) DURATION] COMMAND [ARG]
+
+Start COMMAND, and kill it if still running after DURATION.
+
+Options:
+    -h  display this help and exit
+    -k  also send a KILL signal if COMMAND is still running
+          this long after the initial signal was sent
+    -s  specify the signal to be sent on timeout
+          SIGNAL may be a name like 'HUP' or a number
+    -t  DURATION.  The use of '-t' is optional.  It's here for
+          script compatibility with the 'busybox' variant of 'timeout'
+
+    DURATION is an integer with an optional suffix:
+        's'  for seconds (the default)
+        'm'  for minutes
+        'h'  for hours
+        'd'  for days
+
+Note:
+    This is a shell script that mimics the 'timeout' command
+
+Warning:
+    Long running invocations will be subject to potential target pid reuse
+      i.e. COMMAND dies, its pid is reused by another program
+      and timeout dutifully kills an innocent bystander
+
+Defaults:
+    DURATION: 10 seconds, SIG: TERM
+EOF
+exit 0
+}
+
+# Function to validate and convert durations into seconds
+# e.g. 'set_duration 10m' will output '600', i.e. 10 minutes = 600 seconds
+set_duration() {
+    case "${1}" in
+        (*[!0-9smhd]*|'')
+            printf '%s\n' "timeout: '${1:-null}' is not valid." >&2
+            exit 1
+        ;;
+        (*m) _duration="${1%m*}"; _duration=$(( _duration * 60 )) ;;
+        (*h) _duration="${1%h*}"; _duration=$(( _duration * 60 * 60 )) ;;
+        (*d) _duration="${1%d*}"; _duration=$(( _duration * 60 * 60 * 24 )) ;;
+        (*)  _duration="${1%s*}" ;;
+    esac
+    printf -- '%s\n' "${_duration}"
+    unset -v _duration
+}
+
+# Default the sigName variable, to replicate the 'busybox' behaviour
+sigName=TERM
+
+# We don't support the long options from GNU timeout, 
+# although we could build in a '-p' option to replicate '--preserve-status'.  
+# '--foreground' would probably be more trouble than it's worth
+while getopts ":hk:s:t:" arg; do
+    case "${arg}" in
+        (h) print_usage ;;
+        (k) killDuration="$(set_duration "${OPTARG}")" ;;
+        (s)
+            case "${OPTARG}" in
+                (1|*[hH][uU][pP])       sigName=HUP ;;
+                (2|*[iI][nN][tT])       sigName=INT ;;
+                (3|*[qQ][uU][iI][tT])   sigName=QUIT ;;
+                (6|*[aA][bB][rR][tT])   sigName=ABRT ;;
+                (9|*[kK][iI][lL][lL])   sigName=KILL ;;
+                (14|*[aA][lL][rR][mM])  sigName=ALRM ;;
+                (15|*[tT][eE][rR][mM])  sigName=TERM ;;
+                (*)
+                    printf '%s\n' "Unrecognised signal name/number" >&2
+                    exit 1
+                ;;
+            esac
+        ;;
+        (t) duration="$(set_duration "${OPTARG}")" ;;
+        (*) print_usage ;;
+    esac
+done
+shift "$((OPTIND-1))"
+
+# If duration isn't set by '-t', we expect that $1 is the duration
+# Alternatively, $1 could be a command, in which case we default to 10s
+# This is as-per the behaviour of the 'busybox' timeout
+if [ ! "${duration}" ]; then
+    # Test if $1 is a command, if so, default to 10 seconds
+    if command -v "${1}" >/dev/null 2>&1; then
+        duration=10
+    else
+        duration="$(set_duration "${1}")"
+        # shift so that the rest of the line is the COMMAND to execute
+        shift
+    fi
+fi
+
+# There are many ways to do this.
+# The below approach seems to work nicely and is relatively simple
+# Sourced from http://stackoverflow.com/a/24413646
+
+# Run in a subshell to avoid job control messages
+(
+    "${@}" &     # Run the COMMAND and background it
+    child="${!}" # Grab the PID of the COMMAND
+    
+    # Avoid default notification in non-interactive shell for signal
+    trap -- "" "${sigName}"
+    (
+        sleep "${duration}"
+        kill -s "${sigName}" "${child}" 
+    ) 2> /dev/null &
+
+    # If '-k' is used and we get to this point, work through it
+    [ "${killDuration}" ] && sleep "${killDuration}" && kill -9 "${child}"
+
+    wait "${child}"
+)
