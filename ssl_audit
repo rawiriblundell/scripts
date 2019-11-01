@@ -1,0 +1,261 @@
+#!/bin/bash
+# ssl_audit
+# Locate and report on SSL certs on a Linux/Solaris system
+# Author:       Rawiri Blundell, Datacom Compute
+# Copyright:    (c) MIT License
+# Date:         20190702
+###############################################################################
+# Dynamically build PATH to ensure that locally installed binaries are found
+# Blank a variable for the following dynamic PATH task
+newPath=
+
+# Iterate through a list of potential PATH members and add any found paths to
+# the 'newPath' variable.  
+for dir in /usr/gnu/bin /usr/xpg6/bin /usr/xpg4/bin /usr/kerberos/bin \
+  /usr/kerberos/sbin /bin /sbin /usr/bin /usr/sbin /usr/contrib/bin \
+  /usr/local/bin /usr/local/sbin /opt/csw/bin /opt/csw/sbin /opt/sfw/bin \
+  /opt/sfw/sbin /usr/pkg/bin /usr/sfw/bin /usr/sfw/sbin /snap/bin; do
+
+  [[ -d "${dir}" ]] && newPath="${newPath}:${dir}"
+done
+
+# Now assign our freshly built newPath variable, removing any leading colon
+PATH="${newPath#:}"
+
+# Finally, export the PATH and unset newPath
+export PATH
+unset -v newPath
+
+# If HOSTNAME isn't set, then set it
+if [ ! "${HOSTNAME}" ]; then 
+    HOSTNAME=$(hostname); readonly HOSTNAME; export HOSTNAME
+fi
+
+# Let's setup the following, somewhat obvious functions
+get_file_size() {
+  stat -c %s "${1:?No Target Defined}" 2>/dev/null ||
+  perl -e 'if (! -f $ARGV[0]){die "0000000"};$size=(stat($ARGV[0]))[7];print $size."\n";' "${1:?No Target Defined}"
+}
+
+is_directory() {
+  [[ -d "${1:?No Directory Defined}" ]]
+}
+
+is_fsobj() {
+  [[ -r "${1:?No Cert Defined}" ]]
+}
+
+is_symlink() {
+  [[ -L "${1:?No Cert Defined}" ]]
+}
+
+print_header() {
+  printf -- '%s;%s;%s;%s;%s\n' \
+    "File path" \
+    "Fingerprint" \
+    "Subject" \
+    "Expiry Date" \
+    "Status (days left)"
+}
+
+read_cert() {
+  openssl x509 -in "${1:?No Cert Defined}" -text -noout
+}
+
+read_cert_expiry() {
+  openssl x509 -in "${1:?No Cert Defined}" -enddate -noout
+}
+
+read_cert_serial() {
+  openssl x509 -in "${1:?No Cert Defined}" -serial -noout
+}
+
+read_cert_subject() {
+  openssl x509 -in "${1:?No Cert Defined}" -subject -noout
+}
+
+read_cert_thumbprint() {
+  openssl x509 -in "${1:?No Cert Defined}" -fingerprint -noout
+}
+
+# A portability function for older systems that don't have the mapfile builtin
+if ! command -v mapfile >/dev/null 2>&1; then
+  mapfile() {
+    local _arrName i IFS
+    IFS=$'\n'     # Temporarily set IFS to newlines
+    set -f        # Turn off globbing
+    set +H        # Prevent parsing of '!' via history substitution
+
+    # We use the behaviour of '-t' by default, so if it's given, skip it
+    case "${1}" in
+      (-t) shift; _arrName="${1}" ;;
+      (*)  _arrName="${1}" ;;
+    esac
+
+    # Read all of the input
+    i=0
+    while IFS=$'\n' read -r; do
+      MAPFILE[i]="${REPLY}"
+      ((i++))
+    done
+    [[ "${REPLY}" ]] && MAPFILE[i]="${REPLY}"
+
+    export MAPFILE
+
+    # Finally, rename the array if required
+    # I would love to know a better way to handle this
+    if [[ -n "${_arrName}" ]]; then
+      # shellcheck disable=SC2034
+        eval "${_arrName}=( \"\${MAPFILE[@]}\" )"
+    fi
+
+    # Set f and H back to normal
+    set +f
+    set -H
+  }
+fi
+
+# Calculate how many days until the cert expires
+# A fun approach might be to use openssl's '-checkend' option and iterate up
+# by 86400 seconds while keeping a counter until it fails.  This would give us
+# a count of days until expiry... but we don't want to hammer openssl too much
+# with this script if we're working in system-wide audit mode.
+
+# Short circuit Solaris' 'date'
+if date -d yesterday 2>&1 | grep illegal >/dev/null 2>&1; then
+  calculate_cert_expiry() {
+    certExpiry=$(read_cert_expiry "${1:?No Cert Defined}" | sed -e "s/^notAfter=//")
+    case "$(openssl x509 -in "${1}" -checkend 0)" in
+      (*'not expire'*)  certMortality="OK" ;;
+      (*'will expire')  certMortality="EXPIRED" ;;
+    esac
+  }
+else
+  calculate_cert_expiry() {
+    certExpiry=$(read_cert_expiry "${1:?No Cert Defined}" | sed -e "s/^notAfter=//")
+    case "$(openssl x509 -in "${1}" -checkend 0)" in
+      (*'not expire'*)  certMortality="OK" ;;
+      (*'will expire')  certMortality="EXPIRED" ;;
+    esac
+    certMortality="${certMortality} ($(( ( $(date -d "${certExpiry}" +%s) - $(date +%s) ) / 86400 )) days)"
+  }
+fi
+###############################################################################
+
+# First, we look to the script's positional parameters.
+# If a path to a particular cert is given, we just want to audit that
+# If a path is given with -a, we append it to the system-wide audit
+# Otherwise, we just perform a system-wide audit
+case "${1}" in
+  (-a)
+    builtIn=true
+    appendPath="${2}"
+  ;;
+  ('')
+    builtIn=true
+  ;;
+  (*)
+    builtIn=false
+    certPathArray=( "${1}" )
+  ;;
+esac
+
+if [[ "${builtIn}" = "true" ]]; then
+  # Builtin list of potential paths, please feel free to submit additions!
+  # The default list is sourced from golang's cert detection:
+  # https://golang.org/src/crypto/x509/root_linux.go
+  certPathArray=(
+    /etc/ssl/certs/ca-certificates.crt
+    /etc/pki/tls/certs/ca-bundle.crt
+    /etc/ssl/ca-bundle.pem
+    /etc/pki/tls/cacert.pem
+    /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    /usr/local/share/ca-certificates
+    /etc/ssl/private
+  )
+
+  # Possible additions from elsewhere in golang
+  #  "/etc/ssl/certs",               // SLES10/SLES11, https://golang.org/issue/12139
+  #  "/system/etc/security/cacerts", // Android
+  #  "/usr/local/share/certs",       // FreeBSD
+  #  "/etc/pki/tls/certs",           // Fedora/RHEL
+  #  "/etc/openssl/certs",           // NetBSD
+
+  # If appendPath is set, add it to the array
+  if [[ "${appendPath}" ]]; then
+    certPathArray=( "${certPathArray[@]}" "${appendPath}" )
+  fi
+
+  # Use mlocate to identify any other potential certs
+  if command -v locate &>/dev/null; then
+    while read -r; do
+      certPathArray=( "${certPathArray[@]}" "${REPLY}" )
+    done < <(locate -r ".*\\.\\(pem\\|crt\\|cer\\|csr\\|der\\|jks\\|jdb\\|p12\\|ss0\\|p7b\\|p7c\\|pfx\\|keystore\\)$" 2>/dev/null)
+  fi
+  
+  # And/or simple-locate, if it's present
+  if [[ -r /var/lib/simple-locate/locate.root ]]; then
+     while read -r; do
+      certPathArray=( "${certPathArray[@]}" "${REPLY}" )
+    done < <(grep -E "\\.(pem|crt|cer|csr|der|jks|jdb|p12|ss0|p7b|p7c|pfx|keystore)$" /var/lib/simple-locate/locate.root 2>/dev/null) 
+  fi
+fi
+
+# We expand directories and resolve symlinks
+for certPath in "${certPathArray[@]}"; do
+  if is_directory "${certPath}"; then
+    while read -r; do
+      certPathArray=( "${certPathArray[@]}" "${REPLY}" )
+    done < <(find "${certPath}" -type f)
+    mapfile -t certPathArray < <(printf -- '%s\n' "${certPathArray[@]}" | grep -v "^${certPath}$" | grep .)
+  fi
+
+  # If it's a symlink, translate it to its target path
+  # Remove the symlink and add the target to the array
+  if is_symlink "${certPath}"; then
+    actualCertPath=$(readlink -f "${certPath}")
+    certPathArray=( "${certPathArray[@]}" "${actualCertPath}" )
+    mapfile -t certPathArray < <(printf -- '%s\n' "${certPathArray[@]}" | grep -v "^${certPath}$" | grep .)
+  fi
+done
+
+# Now let's de-duplicate and de-gap the array
+mapfile -t certPathArray < <(printf -- '%s\n' "${certPathArray[@]}" | grep . | sort | uniq)
+
+# Print our header
+print_header
+
+# Now let's sanity check each path in the array through multiple passes
+# First, we check for directories and expand their contents into the array
+for certPath in "${certPathArray[@]}"; do
+  # If we hit an empty element, skip to the next one
+  [[ -z "${certPath}" ]] && continue
+
+  # If it doesn't exist, skip to the next one
+  ! is_fsobj "${certPath}" && continue
+
+  # If it's 0-sized, skip to the next one
+  (( $(get_file_size "${certPath}") == 0 )) && continue
+  
+  # If we're not able to read it, let stderr know and skip to the next one
+  if read_cert "${certPath}" 2>&1 | grep -q "unable to load certificate"; then
+    printf -- '%s\n' "Unable to read '${HOSTNAME}:${certPath}' for some reason" >&2
+    continue
+  fi
+
+  # Once all of that is FINALLY sorted out, let's process it
+  certThumb=$(read_cert_thumbprint "${certPath}")
+  certSubject=$(read_cert_subject "${certPath}")
+  calculate_cert_expiry "${certPath}"
+
+  # We want to output CSV format with the following details
+  # thumb print, Cert subject, expiry date, days until expiry
+  printf -- '%s;%s;%s;%s;%s\n' \
+    "${HOSTNAME}:${certPath}" \
+    "${certThumb}" \
+    "${certSubject}" \
+    "${certExpiry}" \
+    "${certMortality}"
+  
+  unset -v certThumb certSubject certExpiry certMortality
+done
