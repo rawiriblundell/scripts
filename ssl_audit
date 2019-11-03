@@ -27,7 +27,7 @@ export PATH
 unset -v newPath
 
 # If HOSTNAME isn't set, then set it
-if [ ! "${HOSTNAME}" ]; then 
+if [[ ! "${HOSTNAME}" ]]; then 
     HOSTNAME=$(hostname); readonly HOSTNAME; export HOSTNAME
 fi
 
@@ -50,12 +50,13 @@ is_symlink() {
 }
 
 print_header() {
-  printf -- '%s;%s;%s;%s;%s\n' \
+  printf -- '%s;%s;%s;%s;%s;%s\n' \
     "File path" \
     "Fingerprint" \
     "Subject" \
     "Expiry Date" \
-    "Status (days left)"
+    "Days Left" \
+    "Expiry State"
 }
 
 read_cert() {
@@ -63,11 +64,18 @@ read_cert() {
 }
 
 read_cert_expiry() {
-  openssl x509 -in "${1:?No Cert Defined}" -enddate -noout
+  openssl x509 -in "${1:?No Cert Defined}" -enddate -noout | sed -e "s/^notAfter=//"
 }
 
 read_cert_serial() {
   openssl x509 -in "${1:?No Cert Defined}" -serial -noout
+}
+
+read_cert_state() {
+  case "$(openssl x509 -in "${1:?No Cert Defined}" -checkend "${2:-0}")" in
+    (*'not expire'*)  printf -- '%s\n' "OK" ;;
+    (*'will expire')  printf -- '%s\n' "EXPIRED" ;;
+  esac
 }
 
 read_cert_subject() {
@@ -116,28 +124,36 @@ if ! command -v mapfile >/dev/null 2>&1; then
 fi
 
 # Calculate how many days until the cert expires
-# A fun approach might be to use openssl's '-checkend' option and iterate up
-# by 86400 seconds while keeping a counter until it fails.  This would give us
-# a count of days until expiry... but we don't want to hammer openssl too much
-# with this script if we're working in system-wide audit mode.
-
-# Short circuit Solaris' 'date'
+# Short circuit versions of 'date' that don't support '-d' (e.g. Solaris)
+# For these instances, we cycle through openssl's '-checkend' option while
+# keeping a counter, this way we can still inefficiently calculate days left (approx)
+# Note: This can take some time to run
 if date -d yesterday 2>&1 | grep illegal >/dev/null 2>&1; then
   calculate_cert_expiry() {
-    certExpiry=$(read_cert_expiry "${1:?No Cert Defined}" | sed -e "s/^notAfter=//")
-    case "$(openssl x509 -in "${1}" -checkend 0)" in
-      (*'not expire'*)  certMortality="OK" ;;
-      (*'will expire')  certMortality="EXPIRED" ;;
+    local dayCount=0
+    local secCount=0
+    case "$(read_cert_state "${1:?No Cert Defined}")" in
+      (OK)
+        until [[ "$(read_cert_state "${1}" "${secCount}")" = "EXPIRED" ]]; do
+          dayCount=$(( dayCount + 1 ))
+          secCount=$(( secCount + 86400 ))
+        done
+        printf -- '%s\n' "${dayCount} days"
+      ;;
+      (EXPIRED)
+        until [[ "$(read_cert_state "${1}" "${secCount}")" = "OK" ]]; do
+          dayCount=$(( dayCount + 1 ))
+          secCount=$(( secCount - 86400 ))
+        done
+        printf -- '%s\n' "-${dayCount} days"
+      ;;
     esac
   }
 else
   calculate_cert_expiry() {
-    certExpiry=$(read_cert_expiry "${1:?No Cert Defined}" | sed -e "s/^notAfter=//")
-    case "$(openssl x509 -in "${1}" -checkend 0)" in
-      (*'not expire'*)  certMortality="OK" ;;
-      (*'will expire')  certMortality="EXPIRED" ;;
-    esac
-    certMortality="${certMortality} ($(( ( $(date -d "${certExpiry}" +%s) - $(date +%s) ) / 86400 )) days)"
+    local certExpiry
+    certExpiry=$(read_cert_expiry "${1:?No Cert Defined}")
+    printf -- '%s\n' "$(( ( $(date -d "${certExpiry}" +%s) - $(date +%s) ) / 86400 )) days"
   }
 fi
 ###############################################################################
@@ -244,18 +260,15 @@ for certPath in "${certPathArray[@]}"; do
   fi
 
   # Once all of that is FINALLY sorted out, let's process it
-  certThumb=$(read_cert_thumbprint "${certPath}")
-  certSubject=$(read_cert_subject "${certPath}")
-  calculate_cert_expiry "${certPath}"
-
   # We want to output CSV format with the following details
-  # thumb print, Cert subject, expiry date, days until expiry
-  printf -- '%s;%s;%s;%s;%s\n' \
+  # thumb print, Cert subject, expiry date, days until expiry, expiry state
+  printf -- '%s;%s;%s;%s;%s;%s\n' \
     "${HOSTNAME}:${certPath}" \
-    "${certThumb}" \
-    "${certSubject}" \
-    "${certExpiry}" \
-    "${certMortality}"
+    "$(read_cert_thumbprint "${certPath}")" \
+    "$(read_cert_subject "${certPath}")" \
+    "$(read_cert_expiry "${certPath}")" \
+    "$(calculate_cert_expiry "${certPath}")" \
+    "$(read_cert_state "${certPath}")"
   
   unset -v certThumb certSubject certExpiry certMortality
 done
