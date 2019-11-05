@@ -1,6 +1,6 @@
 #!/bin/bash
 # ssl_audit
-# Locate and report on SSL certs on Linux and Solaris systems
+# Locate and report on SSL certs on a Linux system
 # Author:       Rawiri Blundell, Datacom Compute
 # Copyright:    (c) MIT License
 # Date:         20190702
@@ -86,43 +86,6 @@ is_symlink() {
   [[ -L "${1:?No Cert Defined}" ]]
 }
 
-print_header() {
-  printf -- '%s;%s;%s;%s;%s;%s\n' \
-    "File path" \
-    "Fingerprint" \
-    "Subject" \
-    "Expiry Date" \
-    "Days Left" \
-    "Expiry State"
-}
-
-read_cert() {
-  openssl x509 -in "${1:?No Cert Defined}" -text -noout
-}
-
-read_cert_expiry() {
-  openssl x509 -in "${1:?No Cert Defined}" -enddate -noout | sed -e "s/^notAfter=//"
-}
-
-read_cert_serial() {
-  openssl x509 -in "${1:?No Cert Defined}" -serial -noout
-}
-
-read_cert_state() {
-  case "$(openssl x509 -in "${1:?No Cert Defined}" -checkend "${2:-0}")" in
-    (*'not expire'*)  printf -- '%s\n' "OK" ;;
-    (*'will expire')  printf -- '%s\n' "EXPIRED" ;;
-  esac
-}
-
-read_cert_subject() {
-  openssl x509 -in "${1:?No Cert Defined}" -subject -noout
-}
-
-read_cert_thumbprint() {
-  openssl x509 -in "${1:?No Cert Defined}" -fingerprint -noout
-}
-
 # A portability function for older systems that don't have the mapfile builtin
 if ! command -v mapfile >/dev/null 2>&1; then
   mapfile() {
@@ -160,11 +123,69 @@ if ! command -v mapfile >/dev/null 2>&1; then
   }
 fi
 
+print_header() {
+  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+    "File path" \
+    "Fingerprint" \
+    "Subject" \
+    "Algorithm" \
+    "Issuer" \
+    "Not Before" \
+    "Not After" \
+    "Days Left" \
+    "Expiry State"
+}
+
+# I know that the functions below result in multiple calls to openssl
+# This is computationally inefficient, but it's just how this script grew
+read_cert() {
+  openssl x509 -in "${1:?No Cert Defined}" -text -noout
+}
+
+read_cert_active() {
+  openssl x509 -in "${1:?No Cert Defined}" -startdate -noout |
+    sed -e "s/^notBefore=//" 
+}
+
+read_cert_algorithm() {
+  read_cert "${1:?No Cert Defined}" | 
+    awk -F ': ' '/Signature Algorithm/{print $2; exit}'
+}
+
+read_cert_expiry() {
+  openssl x509 -in "${1:?No Cert Defined}" -enddate -noout |
+    sed -e "s/^notAfter=//"
+}
+
+read_cert_issuer() {
+  openssl x509 -in "${1:?No Cert Defined}" -issuer -noout |
+    sed -e "s/^issuer=//"
+}
+
+read_cert_serial() {
+  openssl x509 -in "${1:?No Cert Defined}" -serial -noout |
+    sed -e "s/^serial=//"
+}
+
+read_cert_state() {
+  case "$(openssl x509 -in "${1:?No Cert Defined}" -checkend "${2:-0}")" in
+    (*'not expire'*)  printf -- '%s\n' "OK" ;;
+    (*'will expire')  printf -- '%s\n' "EXPIRED" ;;
+  esac
+}
+
+read_cert_subject() {
+  openssl x509 -in "${1:?No Cert Defined}" -subject -noout |
+    sed -e "s/^subject=//"
+}
+
+read_cert_fingerprint() {
+  openssl x509 -in "${1:?No Cert Defined}" -fingerprint -noout
+}
+
 # Calculate how many days until the cert expires
 # Short circuit versions of 'date' that don't support '-d' (e.g. Solaris)
-# For these instances, we cycle through openssl's '-checkend' option while
-# keeping a counter, this way we can still inefficiently calculate days left (approx)
-# Note: This can take some time to run
+# In this instance, we want to call 'convert_time_to_epoch()'
 if date -d yesterday 2>&1 | grep illegal >/dev/null 2>&1; then
   calculate_cert_epoch() {
     convert_time_to_epoch "$(read_cert_expiry "${1:?No Cert Defined}")"
@@ -287,14 +308,15 @@ for certPath in "${certPathArray[@]}"; do
 
   # Once all of that is FINALLY sorted out, let's process it
   # We want to output CSV format with the following details
-  # thumb print, Cert subject, expiry date, days until expiry, expiry state
-  printf -- '%s;%s;%s;%s;%s;%s\n' \
+  # fingerprint, Cert subject, expiry date, days until expiry, expiry state
+  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
     "${HOSTNAME}:${certPath}" \
-    "$(read_cert_thumbprint "${certPath}")" \
+    "$(read_cert_fingerprint "${certPath}")" \
     "$(read_cert_subject "${certPath}")" \
+    "$(read_cert_algorithm "${certPath}")" \
+    "$(read_cert_issuer "${certPath}")" \
+    "$(read_cert_active "${certPath}")" \
     "$(read_cert_expiry "${certPath}")" \
     "$(calculate_cert_expiry "${certPath}")" \
     "$(read_cert_state "${certPath}")"
-  
-  unset -v certThumb certSubject certExpiry certMortality
 done
