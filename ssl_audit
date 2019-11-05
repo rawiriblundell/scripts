@@ -28,7 +28,7 @@ unset -v newPath
 
 # If HOSTNAME isn't set, then set it
 if [[ ! "${HOSTNAME}" ]]; then 
-    HOSTNAME=$(hostname); readonly HOSTNAME; export HOSTNAME
+  HOSTNAME=$(hostname); readonly HOSTNAME; export HOSTNAME
 fi
 
 # Expected format example: "Nov 10 21:19:01 2034 GMT"
