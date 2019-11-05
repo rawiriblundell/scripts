@@ -63,9 +63,9 @@ convert_time_to_epoch() {
 # To do this in pure shell is... fun... however 'perl' is assumed
 # elsewhere in this agent, so we may as well depend on that for our failover option
 if date +%s 2>/dev/null | grep '%s' >/dev/null 2>&1; then
-    get_epoch() { perl -e 'print time."\n";'; }
+  get_epoch() { perl -e 'print time."\n";'; }
 else
-    get_epoch() { date +%s; }
+  get_epoch() { date +%s; }
 fi
 
 # Let's setup the following, somewhat obvious functions
