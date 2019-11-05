@@ -1,6 +1,6 @@
 #!/bin/bash
 # ssl_audit
-# Locate and report on SSL certs on a Linux/Solaris system
+# Locate and report on SSL certs on Linux and Solaris systems
 # Author:       Rawiri Blundell, Datacom Compute
 # Copyright:    (c) MIT License
 # Date:         20190702
@@ -29,6 +29,43 @@ unset -v newPath
 # If HOSTNAME isn't set, then set it
 if [[ ! "${HOSTNAME}" ]]; then 
     HOSTNAME=$(hostname); readonly HOSTNAME; export HOSTNAME
+fi
+
+# Expected format example: "Nov 10 21:19:01 2034 GMT"
+convert_time_to_epoch() {
+  local month day timestamp year hours min sec
+
+  # Read our incoming date/time information into our variables
+  read -r month day timestamp year _ < <(echo "${*:?No date provided}")
+  IFS=':' read -r hours min sec < <(echo "${timestamp}")
+
+  # Convert the month to 0..11 range
+  case "${month}" in
+    ([jJ]an*) month=0 ;;
+    ([fF]eb*) month=1 ;;
+    ([mM]ar*) month=2 ;;
+    ([aA]pr*) month=3 ;;
+    ([mM]ay)  month=4 ;;
+    ([jJ]un*) month=5 ;;
+    ([jJ]ul*) month=6 ;;
+    ([aA]ug*) month=7 ;;
+    ([sS]ep*) month=8 ;;
+    ([oO]ct*) month=9 ;;
+    ([nN]ov*) month=10 ;;
+    ([dD]ec*) month=11 ;;
+  esac
+
+  # Pass our variables to the mighty 'perl'
+  perl -e 'use Time::Local; print timegm(@ARGV[0,1,2,3,4], $ARGV[5]-1900)."\n";' "${sec}" "${min}" "${hours}" "${day}" "${month}" "${year}"
+}
+
+# date +%s is not portable, so we provide this function
+# To do this in pure shell is... fun... however 'perl' is assumed
+# elsewhere in this agent, so we may as well depend on that for our failover option
+if date +%s 2>/dev/null | grep '%s' >/dev/null 2>&1; then
+    get_epoch() { perl -e 'print time."\n";'; }
+else
+    get_epoch() { date +%s; }
 fi
 
 # Let's setup the following, somewhat obvious functions
@@ -129,33 +166,22 @@ fi
 # keeping a counter, this way we can still inefficiently calculate days left (approx)
 # Note: This can take some time to run
 if date -d yesterday 2>&1 | grep illegal >/dev/null 2>&1; then
-  calculate_cert_expiry() {
-    local dayCount=0
-    local secCount=0
-    case "$(read_cert_state "${1:?No Cert Defined}")" in
-      (OK)
-        until [[ "$(read_cert_state "${1}" "${secCount}")" = "EXPIRED" ]]; do
-          dayCount=$(( dayCount + 1 ))
-          secCount=$(( secCount + 86400 ))
-        done
-        printf -- '%s\n' "${dayCount} days"
-      ;;
-      (EXPIRED)
-        until [[ "$(read_cert_state "${1}" "${secCount}")" = "OK" ]]; do
-          dayCount=$(( dayCount + 1 ))
-          secCount=$(( secCount - 86400 ))
-        done
-        printf -- '%s\n' "-${dayCount} days"
-      ;;
-    esac
+  calculate_cert_epoch() {
+    convert_time_to_epoch "$(read_cert_expiry "${1:?No Cert Defined}")"
   }
 else
-  calculate_cert_expiry() {
-    local certExpiry
-    certExpiry=$(read_cert_expiry "${1:?No Cert Defined}")
-    printf -- '%s\n' "$(( ( $(date -d "${certExpiry}" +%s) - $(date +%s) ) / 86400 )) days"
+  calculate_cert_epoch() {
+    date -d "$(read_cert_expiry "${1:?No Cert Defined}")" +%s
   }
 fi
+
+calculate_cert_expiry() {
+  local certEpoch
+  curEpoch=$(get_epoch)
+  certEpoch=$(calculate_cert_epoch "${1:?No Cert Defined}")
+  printf -- '%s\n' "$(( ( certEpoch - curEpoch ) / 86400 )) days"
+}
+
 ###############################################################################
 
 # First, we look to the script's positional parameters.
