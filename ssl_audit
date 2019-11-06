@@ -309,7 +309,8 @@ for certPath in "${certPathArray[@]}"; do
 
   # Once all of that is FINALLY sorted out, let's process it
   # We want to output CSV format with the following details
-  # fingerprint, Cert subject, expiry date, days until expiry, expiry state
+  # hostname:cert path; fingerprint; Cert subject; cert algorithm; cert issuer;
+  # cert serial; active date; expiry date; days since/until expiry, expiry state
   printf -- '%s;%s;%s;%s;%s;%s;%s;%s;;%s;%s\n' \
     "${HOSTNAME}:${certPath}" \
     "$(read_cert_fingerprint "${certPath}")" \
