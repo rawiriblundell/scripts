@@ -124,12 +124,13 @@ if ! command -v mapfile >/dev/null 2>&1; then
 fi
 
 print_header() {
-  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
     "File path" \
     "Fingerprint" \
     "Subject" \
     "Algorithm" \
     "Issuer" \
+    "Serial" \
     "Not Before" \
     "Not After" \
     "Days Left" \
@@ -309,12 +310,13 @@ for certPath in "${certPathArray[@]}"; do
   # Once all of that is FINALLY sorted out, let's process it
   # We want to output CSV format with the following details
   # fingerprint, Cert subject, expiry date, days until expiry, expiry state
-  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;;%s;%s\n' \
     "${HOSTNAME}:${certPath}" \
     "$(read_cert_fingerprint "${certPath}")" \
     "$(read_cert_subject "${certPath}")" \
     "$(read_cert_algorithm "${certPath}")" \
     "$(read_cert_issuer "${certPath}")" \
+    "$(read_cert_serial "${certPath}")" \
     "$(read_cert_active "${certPath}")" \
     "$(read_cert_expiry "${certPath}")" \
     "$(calculate_cert_expiry "${certPath}")" \
