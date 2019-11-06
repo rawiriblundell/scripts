@@ -10,7 +10,7 @@
 newPath=
 
 # Iterate through a list of potential PATH members and add any found paths to
-# the 'newPath' variable.  
+# the 'newPath' variable.  This is mosly for the benefit of Solaris.
 for dir in /usr/gnu/bin /usr/xpg6/bin /usr/xpg4/bin /usr/kerberos/bin \
   /usr/kerberos/sbin /bin /sbin /usr/bin /usr/sbin /usr/contrib/bin \
   /usr/local/bin /usr/local/sbin /opt/csw/bin /opt/csw/sbin /opt/sfw/bin \
@@ -95,10 +95,14 @@ if ! command -v mapfile >/dev/null 2>&1; then
     set +H        # Prevent parsing of '!' via history substitution
 
     # We use the behaviour of '-t' by default, so if it's given, skip it
-    case "${1}" in
-      (-t) shift; _arrName="${1}" ;;
-      (*)  _arrName="${1}" ;;
+    case "${*}" in
+      (*-t*) set -- "${*/-t/}" ;;
+      (*)    : ;;
     esac
+
+    # If an argument is left, it's our array name, otherwise this
+    # function will export an array named MAPFILE (as the real 'mapfile' does)
+    _arrName="${1}"
 
     # Read all of the input
     i=0
@@ -106,6 +110,7 @@ if ! command -v mapfile >/dev/null 2>&1; then
       MAPFILE[i]="${REPLY}"
       ((i++))
     done
+    # Sometimes there's a trailing line in a while read loop, if so catch it
     [[ "${REPLY}" ]] && MAPFILE[i]="${REPLY}"
 
     export MAPFILE
