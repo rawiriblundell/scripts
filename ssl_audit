@@ -1,6 +1,6 @@
 #!/bin/bash
 # ssl_audit
-# Locate and report on SSL certs on a Linux system
+# Locate and report on SSL certs on a Linux or Solaris system
 # Author:       Rawiri Blundell, Datacom Compute
 # Copyright:    (c) MIT License
 # Date:         20190702
@@ -10,7 +10,7 @@
 newPath=
 
 # Iterate through a list of potential PATH members and add any found paths to
-# the 'newPath' variable.  This is mosly for the benefit of Solaris.
+# the 'newPath' variable.  This is mosly for the benefit of Solaris. 
 for dir in /usr/gnu/bin /usr/xpg6/bin /usr/xpg4/bin /usr/kerberos/bin \
   /usr/kerberos/sbin /bin /sbin /usr/bin /usr/sbin /usr/contrib/bin \
   /usr/local/bin /usr/local/sbin /opt/csw/bin /opt/csw/sbin /opt/sfw/bin \
@@ -31,12 +31,15 @@ if [[ ! "${HOSTNAME}" ]]; then
   HOSTNAME=$(hostname); readonly HOSTNAME; export HOSTNAME
 fi
 
-# Expected format example: "Nov 10 21:19:01 2034 GMT"
+# Trap all exit types to ensure that any temp files are removed
+trap "rm -rf /tmp/ssl_report 2>/dev/null" EXIT
+
+# Expected format example: "Nov 10 2034 21:19:01"
 convert_time_to_epoch() {
   local month day timestamp year hours min sec
 
   # Read our incoming date/time information into our variables
-  read -r month day timestamp year _ < <(echo "${*:?No date provided}")
+  read -r month day year timestamp < <(echo "${*:?No date provided}")
   IFS=':' read -r hours min sec < <(echo "${timestamp}")
 
   # Convert the month to 0..11 range
@@ -57,6 +60,10 @@ convert_time_to_epoch() {
 
   # Pass our variables to the mighty 'perl'
   perl -e 'use Time::Local; print timegm(@ARGV[0,1,2,3,4], $ARGV[5]-1900)."\n";' "${sec}" "${min}" "${hours}" "${day}" "${month}" "${year}"
+}
+
+extract_cert_bundle() {
+  awk '/BEGIN/,/END/{ if(/BEGIN/){a++}; out="cert"a".pem"; print >out}' "${1:?No Cert Defined}"
 }
 
 # date +%s is not portable, so we provide this function
@@ -129,17 +136,21 @@ if ! command -v mapfile >/dev/null 2>&1; then
 fi
 
 print_header() {
-  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
-    "File path" \
-    "Fingerprint" \
-    "Subject" \
-    "Algorithm" \
-    "Issuer" \
-    "Serial" \
+  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+    "Hostname" \
+    "File Path" \
+    "Common Name" \
     "Not Before" \
     "Not After" \
+    "Serial" \
+    "Issuer" \
+    "Algorithm" \
+    "Fingerprint" \
+    "Expiry State" \
     "Days Left" \
-    "Expiry State"
+    "subjectAltNames" \
+    "ouName" \
+    "email address"
 }
 
 # I know that the functions below result in multiple calls to openssl
@@ -150,7 +161,8 @@ read_cert() {
 
 read_cert_active() {
   openssl x509 -in "${1:?No Cert Defined}" -startdate -noout |
-    sed -e "s/^notBefore=//" 
+    sed -e "s/^notBefore=//" -e "s/GMT//" |
+    awk '{printf("%s %02d %d %s\n", $1,$2,$4,$3)}'
 }
 
 read_cert_algorithm() {
@@ -158,14 +170,36 @@ read_cert_algorithm() {
     awk -F ': ' '/Signature Algorithm/{print $2; exit}'
 }
 
+read_cert_cn() {
+  openssl x509 -in "${1:?No Cert Defined}" -subject -noout -nameopt multiline |
+    awk -F '= ' '/commonName/{print $2}'
+}
+
+read_cert_email() {
+  openssl x509 -in "${1:?No Cert Defined}" -subject -noout -nameopt multiline |
+    awk -F '= ' '/emailAddress/{print $2}'
+}
+
 read_cert_expiry() {
   openssl x509 -in "${1:?No Cert Defined}" -enddate -noout |
-    sed -e "s/^notAfter=//"
+    sed -e "s/^notAfter=//" -e "s/GMT//" |
+    awk '{printf("%s %02d %d %s\n", $1,$2,$4,$3)}'
 }
 
 read_cert_issuer() {
   openssl x509 -in "${1:?No Cert Defined}" -issuer -noout |
     sed -e "s/^issuer=//"
+}
+
+read_cert_ou_name() {
+  openssl x509 -in "${1:?No Cert Defined}" -subject -noout -nameopt multiline |
+    awk -F '= ' '/organizationalUnitName/{print $2}' |
+    paste -s -
+}
+
+read_cert_sans() {
+  openssl x509 -in "${1:?No Cert Defined}" -text -noout |
+    awk -F ': ' "/DNS/{print $2}"
 }
 
 read_cert_serial() {
@@ -178,11 +212,6 @@ read_cert_state() {
     (*'not expire'*)  printf -- '%s\n' "OK" ;;
     (*'will expire')  printf -- '%s\n' "EXPIRED" ;;
   esac
-}
-
-read_cert_subject() {
-  openssl x509 -in "${1:?No Cert Defined}" -subject -noout |
-    sed -e "s/^subject=//"
 }
 
 read_cert_fingerprint() {
@@ -259,14 +288,14 @@ if [[ "${builtIn}" = "true" ]]; then
   if command -v locate &>/dev/null; then
     while read -r; do
       certPathArray=( "${certPathArray[@]}" "${REPLY}" )
-    done < <(locate -r ".*\\.\\(pem\\|crt\\|cer\\|csr\\|der\\|jks\\|jdb\\|p12\\|ss0\\|p7b\\|p7c\\|pfx\\|keystore\\)$" 2>/dev/null)
+    done < <(locate -r ".*\\.\\(crt\\|cer\\|der\\|jdb\\|jks\\|keystore\\|p7b\\|p7c\\|p12\\|pem\\|pfx\\|ss0\\)$" 2>/dev/null)
   fi
   
   # And/or simple-locate, if it's present
   if [[ -r /var/lib/simple-locate/locate.root ]]; then
      while read -r; do
       certPathArray=( "${certPathArray[@]}" "${REPLY}" )
-    done < <(grep -E "\\.(pem|crt|cer|csr|der|jks|jdb|p12|ss0|p7b|p7c|pfx|keystore)$" /var/lib/simple-locate/locate.root 2>/dev/null) 
+    done < <(grep -E "\\.(crt|cer|der|jdb|jks|keystore|p7b|p7c|p12|pem|pfx|ss0)$" /var/lib/simple-locate/locate.root 2>/dev/null) 
   fi
 fi
 
@@ -314,17 +343,52 @@ for certPath in "${certPathArray[@]}"; do
 
   # Once all of that is FINALLY sorted out, let's process it
   # We want to output CSV format with the following details
-  # hostname:cert path; fingerprint; Cert subject; cert algorithm; cert issuer;
-  # cert serial; active date; expiry date; days since/until expiry, expiry state
-  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;;%s;%s\n' \
-    "${HOSTNAME}:${certPath}" \
-    "$(read_cert_fingerprint "${certPath}")" \
-    "$(read_cert_subject "${certPath}")" \
-    "$(read_cert_algorithm "${certPath}")" \
-    "$(read_cert_issuer "${certPath}")" \
-    "$(read_cert_serial "${certPath}")" \
-    "$(read_cert_active "${certPath}")" \
-    "$(read_cert_expiry "${certPath}")" \
-    "$(calculate_cert_expiry "${certPath}")" \
-    "$(read_cert_state "${certPath}")"
+  # hostname; file path; common name; active date; expiry date; cert serial; 
+  # cert issuer; cert algorithm; fingerprint; expiry state; 
+  # days since/until expiry; sans; ou; email
+
+  # shellcheck disable=SC2126
+  certCount=$(grep -E 'BEGIN.* CERTIFICATE' "${certPath}" | wc -l)
+
+  if (( certCount == 1 )); then
+    printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+      "${HOSTNAME}" \
+      "${certPath}" \
+      "$(read_cert_cn "${certPath}")" \
+      "$(read_cert_active "${certPath}")" \
+      "$(read_cert_expiry "${certPath}")" \
+      "$(read_cert_serial "${certPath}")" \
+      "$(read_cert_issuer "${certPath}")" \
+      "$(read_cert_algorithm "${certPath}")" \
+      "$(read_cert_fingerprint "${certPath}")" \
+      "$(read_cert_state "${certPath}")" \
+      "$(calculate_cert_expiry "${certPath}")" \
+      "$(read_cert_sans "${certPath}")" \
+      "$(read_cert_ou_name "${certPath}")" \
+      "$(read_cert_email "${certPath}")"
+  else
+    certTmpDir="/tmp/ssl_report/$(basename "${certPath}")"
+    mkdir -p "${certTmpDir}"
+    (
+      cd "${certTmpDir}" || return 1
+      extract_cert_bundle "${certPath}"
+      for certTmpFile in *; do
+        printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+          "${HOSTNAME}" \
+          "${certPath}" \
+          "$(read_cert_cn "${certTmpFile}")" \
+          "$(read_cert_active "${certTmpFile}")" \
+          "$(read_cert_expiry "${certTmpFile}")" \
+          "$(read_cert_serial "${certTmpFile}")" \
+          "$(read_cert_issuer "${certTmpFile}")" \
+          "$(read_cert_algorithm "${certTmpFile}")" \
+          "$(read_cert_fingerprint "${certTmpFile}")" \
+          "$(read_cert_state "${certTmpFile}")" \
+          "$(calculate_cert_expiry "${certTmpFile}")" \
+          "$(read_cert_sans "${certTmpFile}")" \
+          "$(read_cert_ou_name "${certTmpFile}")" \
+          "$(read_cert_email "${certTmpFile}")"
+      done
+    )
+  fi
 done
