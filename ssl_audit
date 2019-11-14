@@ -75,6 +75,29 @@ else
   get_epoch() { date +%s; }
 fi
 
+# We provide a function to try to determine if a cert is provided by a package
+if command -v dpkg >/dev/null 2>&1; then
+  get_file_provider() {
+    dpkg -S "${1:?No file defined}" 2>/dev/null | awk -F ':' '{print $1}'
+  }
+elif command -v rpm >/dev/null 2>&1; then
+  get_file_provider() {
+    read -r < <(rpm -qf "${1:?No file defined}" 2>/dev/null)
+    case "${REPLY}" in
+      (*'not owned'*) : ;;
+      (*)             printf -- '%s\n' "${REPLY}" ;;
+    esac
+  }
+elif command -v pkgchk >/dev/null 2>&1; then
+  # shellcheck disable=SC2119
+  get_file_provider() {
+    pkgchk -l -p "${1:?No file defined}" | 
+      sed '1,/Referenced by the following/d;/Current status/,$d' |
+      trim |
+      paste -sd ","
+  }
+fi
+
 # Let's setup the following, somewhat obvious functions
 get_file_size() {
   stat -c %s "${1:?No Target Defined}" 2>/dev/null ||
@@ -165,7 +188,7 @@ trim() {
 }
 
 print_header() {
-  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+  printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
     "Hostname" \
     "File Path" \
     "Common Name" \
@@ -179,7 +202,8 @@ print_header() {
     "Days Left" \
     "subjectAltNames" \
     "ouName" \
-    "email address"
+    "email address" \
+    "Source package"
 }
 
 # I know that the functions below result in multiple calls to openssl
@@ -389,6 +413,8 @@ for certPath in "${certPathArray[@]}"; do
     continue
   fi
 
+  certPkg=$(get_file_provider "${certPath}")
+
   # Once all of that is FINALLY sorted out, let's process it
   # We want to output CSV format with the following details
   # hostname; file path; common name; active date; expiry date; cert serial; 
@@ -399,7 +425,7 @@ for certPath in "${certPathArray[@]}"; do
   certCount=$(grep -E '\-BEGIN CERTIFICATE\-' "${certPath}" | wc -l)
 
   if (( certCount == 1 )); then
-    printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+    printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
       "${HOSTNAME}" \
       "${certPath}" \
       "$(read_cert_cn "${certPath}")" \
@@ -413,7 +439,8 @@ for certPath in "${certPathArray[@]}"; do
       "$(calculate_cert_expiry "${certPath}")" \
       "$(read_cert_sans "${certPath}")" \
       "$(read_cert_ou_name "${certPath}")" \
-      "$(read_cert_email "${certPath}")"
+      "$(read_cert_email "${certPath}")" \
+      "${certPkg:--}"
   else
     certTmpDir="/tmp/ssl_report/$(basename "${certPath}")"
     mkdir -p "${certTmpDir}"
@@ -425,7 +452,7 @@ for certPath in "${certPathArray[@]}"; do
         if read_cert "${certTmpFile}" 2>&1 | grep -q "unable to load certificate"; then
           continue
         fi
-        printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
+        printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
           "${HOSTNAME}" \
           "${certPath}" \
           "$(read_cert_cn "${certTmpFile}")" \
@@ -439,7 +466,8 @@ for certPath in "${certPathArray[@]}"; do
           "$(calculate_cert_expiry "${certTmpFile}")" \
           "$(read_cert_sans "${certTmpFile}")" \
           "$(read_cert_ou_name "${certTmpFile}")" \
-          "$(read_cert_email "${certTmpFile}")"
+          "$(read_cert_email "${certTmpFile}")" \
+          "${certPkg:--}"
       done
     )
   fi
