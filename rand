@@ -1,15 +1,18 @@
 #!/bin/bash
 # shellcheck disable=SC2039
-# Purpose:     This script attempts to generate random integers through any means necessary
-#              Not to be used for any cryptography, it just generates random integers, that's all!
+# Purpose:     This script attempts to generate random integers through any 
+#              means necessary.  Not to be used for any cryptography, it 
+#              just generates random integers, that's all!
 # Author:      Rawiri Blundell
 # Copyright:   (c) 2016 - Beerware As-Is.  
-#              No warranty or liability, but some attribution would be nice if it works well
-#              for you or you derive your own code.  Just as I've attributed inspiration below.
+#              No warranty or liability, but some attribution would be nice if
+#              it works well for you or you derive your own code.  
+#              Just as I've attributed inspiration below.
 # Date:        20160222
-# Requires:    At the very least, an interpreter with bitshifting.  This isn't strict POSIX.
-# Interpreter: This may have a bash shebang, but should work fine in any POSIX compatible shell
-#              #!/usr/bin/env ksh or #!/bin/ksh will probably get you working on almost anything
+# Requires:    At the very least, an interpreter with bitshifting.
+# Interpreter: This isn't strict POSIX.  This may have a bash shebang, but 
+#              should work fine in any POSIX compatible shell
+#              #!/usr/bin/env ksh or #!/bin/ksh will likely work everywhere
 ###############################################################################
 # Inspiration taken from:
 # Colin Riddel provided the perl one liner that started this
@@ -39,6 +42,17 @@ die() {
   exit 1
 }
 
+# Shorten 'printf' slightly
+printint() {
+  case "${1}" in
+    (-u)  shift && printf -- '%u\n' "${*}" ;;
+    (*)   printf -- '%d\n' "${*}" ;;
+  esac
+}
+printstr() {
+  printf -- '%s\n' "${*}"
+}
+
 # In case we actually use $tmpDir, let's trap and delete it
 trap 'rm -rf "${tmpDir}"' EXIT INT TERM HUP
 
@@ -65,7 +79,7 @@ while getopts ":dDhm:M:N:rz:" Flags; do
   case "${Flags}" in
     (d)   debug="true";;
     (D)   debug="true"; set -x;;
-    (h)   printf '%s\n' "" "rand - generate random positive integers" \
+    (h)   printstr "" "rand - generate random positive integers" \
             "" "Optional Arguments:" \
             "-d [debug.  Tells you which processing method is used (Default:off)]" \
             "-h [help]" \
@@ -73,7 +87,7 @@ while getopts ":dDhm:M:N:rz:" Flags; do
             "-M [maximum number (Default:${maxRand})]" \
             "-N [count.  Number of numbers (Default:${nCount})]" \
             "-r [repeat.  Output lines may be repeated (Default:off)]" \
-            "-z [printf style zero padding.  E.g. With '-z 2', '9' becomes '09' (Default:off)]" ""
+            "-z [zero padding.  E.g. With '-z 2', '9' becomes '09' (Default:off)]" ""
           exit 0;;
     (m)   case "${OPTARG}" in
             (*[!0-9]*|'') die -e "(-m) '${OPTARG}' is not a number";;
@@ -101,7 +115,7 @@ done
 [ -z "${nMax}" ] && nMax="${maxRand}"
 
 # Easter Egg
-if printf '%d\n' "${nMax}" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
+if printint "${nMax}" 2>&1 | grep -E "out of range|too large" >/dev/null 2>&1; then
   die -i "Come on now, stop being silly." \
     "My upper boundary is *sometimes* '${maxRand}'."
 fi
@@ -113,7 +127,8 @@ fi
 
 # If repeat is not set, then nCount cannot be higher than nMax
 if [ "${repeat}" = "false" ] && [ "${nCount}" -gt "${nMax}" ]; then
-  printf '%s\n' "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax})." \
+  printstr \
+    "[INFO] rand: Count (${nCount}) cannot be higher than the maximum boundary (${nMax})." \
     "Count will be: ${nMax}.  Consider the '-r' option." 1>&2
   nCount="${nMax}"
 fi
@@ -124,24 +139,40 @@ export nMin nMax nCount
 ################################################################################
 # Functions
 ################################################################################
+# Check if a command exists
+get_command() {
+  command -v "${*}" >/dev/null 2>&1
+}
+
+# Ensure that shuf is not a step-in function
+# We've had an instance of a step-in function that depended on this script
+# Chicken, meet egg.  Bok bok cluck cluck.
+get_shuf_type() {
+  if type shuf | head -n 1 | grep function > /dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
 # This function simply outputs the method used for random integer generation
 print_debug() {
-  [ "${debug}" = true ] && printf '%s\n' "[DEBUG] rand: Method used is '$*'" 1>&2
+  [ "${debug}" = true ] && printstr "[DEBUG] rand: Method used is '$*'" 1>&2
 }
 
 # Function to generate a reliable seed for whatever method requires one
-# Because 'date +%s' isn't entirely portable, we try other methods to get the epoch
+# Because 'date +%s' isn't entirely portable, we also try other methods
 get_seed() {
   # First we check if /dev/urandom is available.
   # We used to have a get_int_urandom.  /dev/urandom can generate numbers fast
   # But selecting numbers in ranges etc made for a fairly slow method
-  if [ -c /dev/urandom ] && command -v od >/dev/null 2>&1; then
+  if [ -c /dev/urandom ] && get_command od; then
     # Get a string of bytes from /dev/urandom using od
     od -N 4 -A n -t uL /dev/urandom | tr -d '\n' | awk '{$1=$1+0};1'
   # Otherwise we try to get another seed
-  elif date '+%s' >/dev/null 2>&1; then
+  # On some systems, 'date +%s' returns "%s", so we check for digits
+  elif date '+%s' >/dev/null 2>&1 | grep "[0-9]" >/dev/null 2>&1; then
     date '+%s'
-  elif command -v perl >/dev/null 2>&1; then
+  elif get_command perl; then
     perl -e "print time"
   # Last chance, this should work on almost anything
   else
@@ -161,11 +192,11 @@ get_int_fill() {
   intFill=$($1 | get_unique_ints)
 
   # Count how many unique integers we have generated
-  intCount=$(printf '%s\n' "${intFill}" | wc -l)
+  intCount=$(printstr "${intFill}" | wc -l)
 
   # If we've generated enough to satisfy nCount, then we just print them out
   if [ "${intCount}" -ge "${nCount}" ]; then
-    printf '%s\n' "${intFill}" | head -n "${nCount}"
+    printstr "${intFill}" | head -n "${nCount}"
     
   # Otherwise, we walk through a few steps to try and quickly fill the gap
   else
@@ -173,12 +204,12 @@ get_int_fill() {
     mkdir -p "${tmpDir}"
     
     # Now dump what we have to a temporary file
-    printf '%s\n' "${intFill}" > "${tmpDir}"/rnginit
+    printstr "${intFill}" > "${tmpDir}"/rnginit
 
     # Until we have our full set of random integers,
     # Keep throwing random ints into the temporary file
     while [ "${intCount}" -lt "${nCount}" ]; do
-      eval "$1" >> "${tmpDir}"/rnginit
+      eval "${1}" >> "${tmpDir}"/rnginit
       intCount=$(get_unique_ints < "${tmpDir}"/rnginit | wc -l)
     done 
 
@@ -190,16 +221,16 @@ get_int_fill() {
 # Switch between get_int_fill or not
 switch_repeat_mode() {
   if [ "${repeat}" = true ]; then
-    "$1"
+    "${1}"
   else
-    get_int_fill "$1"
+    get_int_fill "${1}"
   fi
 }
 
 # This function allows us to print out unsorted, unique integers
 get_unique_ints() {
   # If 'awk' is available, we use it
-  if command -v awk >/dev/null 2>&1; then
+  if get_command awk; then
     awk '!x[$0]++'
   # Otherwise we use a double sort.  This can be brutally slow at scale.
   # We first prepend each line with a line number, then perform a unique sort
@@ -214,12 +245,12 @@ get_unique_ints() {
 if [ -n "${zeroPad}" ]; then
   print_zeropadding() {
     # It appears that 'awk' is more portable vs sed 's/\<[0-9]\>/0&/'
-    if command -v awk >/dev/null 2>&1; then
+    if get_command awk; then
       awk -v z="${zeroPad}" '{$1 = sprintf("%0*d", z, $1); print}'
-    elif command -v xargs >/dev/null 2>&1; then
+    elif get_command xargs; then
       xargs printf '%0*d\n' "${zeroPad}"
     else
-      die -e "'awk' or 'xargs' is required for zero-padding but neither were found."
+      die -e "'awk' or 'xargs' required for zero-padding, neither were found."
     fi
   }
 else
@@ -230,7 +261,15 @@ fi
 
 # Function to generate numbers using 'gawk'
 get_int_gawk() {
-  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" 'BEGIN{srand(systime() + PROCINFO["pid"]); i = 0; while (i < nNum) { printf "%d\n", int(min+rand()*(max-min)); ++i} }'
+  gawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" '
+    BEGIN{
+      srand(systime() + PROCINFO["pid"]); 
+      i = 0; 
+      while (i < nNum){
+        printf "%d\n", int(min+rand()*(max-min)); ++i
+      }
+    }
+  '
 }
 
 # Function to generate numbers using BSD 'jot'
@@ -238,38 +277,43 @@ get_int_jot() {
   # Some versions of 'jot' have uniform distribution, others do not.
   # See: https://unix.stackexchange.com/a/241199
   # This is a lo-fi approach to try and cater for both
-  jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | sed "s/$(( nMax + 1 ))/$(( nMax ))/"
+  jot -w %i -r "${nCount}" "${nMin}" "$(( nMax + 1 ))" | 
+    sed "s/$(( nMax + 1 ))/$(( nMax ))/"
 }
 
 # Function to generate numbers using 'nawk'
-# This used to also call 'mawk' but that was found to be vulnerable to repeating output
+# This used to call 'mawk' but that was found to be prone to repeated output
 get_int_nawk() {
-  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(get_seed)" 'BEGIN {srand(seed); i = 0; while (i < nNum) { printf "%d\n", int(min+rand()*(max-min)); ++i} }'
+  nawk -v min="${nMin}" -v max="${nMax}" -v nNum="${nCount}" -v seed="$(get_seed)" '
+    BEGIN{
+      srand(seed); i = 0; 
+      while (i < nNum){
+        printf "%d\n", int(min+rand()*(max-min)); ++i
+      }
+    }
+  '
 }
 
 # Function to generate numbers using 'perl'
 get_int_perl() {
-  perl -le '$mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount}; foreach my $i (1..$cn) { printf "%.0f\n", int(rand($mx-$mn))+$mn ; }'
+  perl -le '
+    $mn=$ENV{nMin}; $mx=$ENV{nMax}; $cn=$ENV{nCount};
+    foreach my $i (1..$cn) {
+      printf "%.0f\n", int(rand($mx-$mn))+$mn ; 
+    }
+  '
 }
 
 # Function to generate numbers using 'python'
+# Other methods have been considered, check commit history if you're curious
 get_int_python() {
-  python -c "for _ in xrange(${nCount}): import random; print random.randint(${nMin},${nMax})"
-  
-  # Alternative option that loosely follows Daniel Lemire's advice here:
-  # http://lemire.me/blog/2016/03/21/ranged-random-number-generation-is-slow-in-python/
-  # The subtraction and addition to cater for specific boundaries appears to destroy any performance improvement though
-  # The numpy suggestion on that blogpost performed rather poorly for me (Python 2.7)
-  # python -c "for _ in xrange(${nCount}): import random; print int(random.random() * (${nMax} - ${nMin} + 1) + ${nMin})"
-    
-  # The alternative method below fails with a Memory Error if nMax is too high
-  # I'll leave it here for prosperity though (note: it may require nMax = nMax + 1)
-  #python -c "import random; numlist=list(range(${nMin},${nMax})); random.shuffle(numlist); print '\n'.join([str(int) for int in numlist])"
+  python -c "for _ in xrange(${nCount}): import random; \
+    print random.randint(${nMin},${nMax})"
 }
 
 # Function to generate numbers primarily using '$RANDOM' special variable
-# If the special variable isn't available (e.g. dash shell), we fall back to a BSD-style
-# Linear congruential generator (LCG) which we use to create our own '$RANDOM' variable
+# If '$RANDOM' isn't available (e.g. dash shell), we fall back to a BSD-style
+# Linear congruential generator (LCG) which we use to create our own '$RANDOM'
 # This way, the entire bitshifting formula remains the same
 # See: https://rosettacode.org/wiki/Linear_congruential_generator
 get_int_RANDOM() {
@@ -293,7 +337,7 @@ get_int_RANDOM() {
     # If the RANDOM variable is blank, we failover to the LCG
     # We print as an unsigned integer to ensure that it's a positive number
     # shellcheck disable=SC2169
-    RANDOM="${RANDOM:-$(printf '%u\n' "$(( rnSeed / 65536 ))")}"
+    RANDOM="${RANDOM:-$(printint -u "$(( rnSeed / 65536 ))")}"
     # Set our initial bitlength
     rndBitlen=15
     # shellcheck disable=SC2169
@@ -306,7 +350,7 @@ get_int_RANDOM() {
       # shell that does not support $RANDOM.  So we use the LCG and rotate $RANDOM
       # shellcheck disable=SC2169
       if [ "${RANDOM}" = "${RANDOM}" ]; then
-        RANDOM=$(printf '%u\n' "$(( rnSeed / 65536 ))")
+        RANDOM=$(printint -u "$(( rnSeed / 65536 ))")
       fi
       # Bitshift RANDOM to the left to stack it i.e. 15 int -> 30 int -> 45 int etc
       # shellcheck disable=SC2169
@@ -320,7 +364,7 @@ get_int_RANDOM() {
     # Next we test if the number we've generated fits into our range.  If so,
     # then we can use it and iterate the while loop
     if [ $((nRandShift + nMin)) -le "${nMax}" ]; then
-      printf '%u\n' "$(( nRandShift + nMin ))"
+      printint -u "$(( nRandShift + nMin ))"
       count=$(( count + 1 ))
     fi
   done
@@ -385,7 +429,7 @@ get_int_xorshift128plus() {
     # By virtue of skipInts being >= 0, this will also drop generated negative overflow ints
     # Then we simply add nMin to bring it back up into our desired range
     if [ $(( (int0 + seed1) >= skipInts )) ]; then
-      printf '%u\n' "$(( ((int0 + seed1) % nRange) + nMin ))"
+      printint -u "$(( ((int0 + seed1) % nRange) + nMin ))"
       count=$(( count + 1 ))
     fi
   done
@@ -394,11 +438,11 @@ get_int_xorshift128plus() {
 # Check if 'seq' is available, if not, provide a basic replacement function
 # Note: this has been stripped back to cater only for ascending sequences
 # A fuller, bash-friendly version is available at https://github.com/rawiriblundell
-if ! command -v seq >/dev/null 2>&1; then
+if ! get_command seq >/dev/null 2>&1; then
   seq() {
     i=$1
     while [ "$i" -ne "$(( $2 + 1 ))" ]; do
-      printf '%s\n' "$i"
+      printstr "$i"
       i=$(( i + 1 ))
     done
   }
@@ -410,42 +454,38 @@ fi
 main() {
   # Cater for GNU shuf, nice and fast
   # This function will also cater for the repeat option natively
-  if command -v shuf > /dev/null 2>&1; then
-    # We disallow the 'shuf' step-in function, as it depends on this script
-    # Chicken, meet egg.  Bok bok cluck cluck.
-    if ! type shuf | head -n 1 | grep function > /dev/null 2>&1; then
-      print_debug shuf
-      get_int_shuf
-    fi
+  if get_command shuf && get_shuf_type; then
+    print_debug shuf
+    get_int_shuf
 
   # If we're on a BSD based host, likely 'jot' is available, so let's use it
   # 'jot' is limited to 2^31-1 by the arc4random algorithm
   # so we also test for an nMax limit based on that
-  elif command -v jot > /dev/null 2>&1 && [ "${nMax}" -le 2147483647 ]; then
+  elif get_command jot && [ "${nMax}" -le 2147483647 ]; then
     print_debug jot
     # Repeating generated numbers is the default behaviour of 'jot'
     switch_repeat_mode get_int_jot
 
   # Now we start going less-native and try perl.  Very likely to be there,   
   # so very likely this will be a commonly used option
-  elif command -v perl > /dev/null 2>&1; then
+  elif get_command perl; then
     print_debug perl
     switch_repeat_mode get_int_perl
 
   # Otherwise, we try python
   # We need to ensure that /dev/urandom is available, as python sources it
-  elif command -v python > /dev/null 2>&1 && [ -c /dev/urandom ]; then
+  elif get_command python && [ -c /dev/urandom ]; then
     print_debug python
     switch_repeat_mode get_int_python
 
   # No perl or python?  Let's try 'gawk'
-  elif command -v gawk > /dev/null 2>&1; then
+  elif get_command gawk; then
     print_debug gawk
     switch_repeat_mode get_int_python
     
   # No gawk?  Surely 'nawk' is hanging around?  Works very similar, but 
   # because we don't have systime() we have to replicate it as a seed for srand().
-  elif command -v nawk > /dev/null 2>&1; then
+  elif get_command nawk; then
     print_debug nawk
     switch_repeat_mode get_int_nawk
 
