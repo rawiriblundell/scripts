@@ -49,8 +49,28 @@ printint() {
     (*)   printf -- '%d\n' "${*}" ;;
   esac
 }
+
 printstr() {
   printf -- '%s\n' "${*}"
+}
+
+# Function to print out a help message
+# Excluded from indentation rules as it's a heredoc
+usage() {
+cat << EOF
+
+rand - generate random positive integers
+
+Optional Arguments:
+    -d [debug.  Tells you which processing method is used (Default:off)]
+    -h [help]
+    -m [minimum number (Default:${nMin})]
+    -M [maximum number (Default:${maxRand})]
+    -N [count.  Number of numbers (Default:${nCount})]
+    -r [repeat.  Output lines may be repeated (Default:off)]
+    -z [zero padding.  E.g. With '-z 2', '9' becomes '09' (Default:off)]
+
+EOF
 }
 
 # In case we actually use $tmpDir, let's trap and delete it
@@ -71,43 +91,34 @@ fi
 # Override for mksh, which uses 32-bit arithmetic
 # This test has to be separate to keep dash happy
 case "${KSH_VERSION}" in
-  (*"MIRBSD"*) maxRand=2147483647;;
+  (*"MIRBSD"*) maxRand=2147483647 ;;
 esac
 
 # Getopts
 while getopts ":dDhm:M:N:rz:" Flags; do
   case "${Flags}" in
-    (d)   debug="true";;
-    (D)   debug="true"; set -x;;
-    (h)   printstr "" "rand - generate random positive integers" \
-            "" "Optional Arguments:" \
-            "-d [debug.  Tells you which processing method is used (Default:off)]" \
-            "-h [help]" \
-            "-m [minimum number (Default:${nMin})]" \
-            "-M [maximum number (Default:${maxRand})]" \
-            "-N [count.  Number of numbers (Default:${nCount})]" \
-            "-r [repeat.  Output lines may be repeated (Default:off)]" \
-            "-z [zero padding.  E.g. With '-z 2', '9' becomes '09' (Default:off)]" ""
-          exit 0;;
+    (d)   debug="true" ;;
+    (D)   debug="true"; set -x ;;
+    (h)   usage && exit 0;;
     (m)   case "${OPTARG}" in
-            (*[!0-9]*|'') die -e "(-m) '${OPTARG}' is not a number";;
-            (*)           nMin="${OPTARG}";;
+            (*[!0-9]*|'') die -e "(-m) '${OPTARG}' is not a number" ;;
+            (*)           nMin="${OPTARG}" ;;
           esac;;
     (M)   case "${OPTARG}" in
-            (*[!0-9]*|'') die -e "(-M) '${OPTARG}' is not a number";;
-            (*)           nMax="${OPTARG}";;
+            (*[!0-9]*|'') die -e "(-M) '${OPTARG}' is not a number" ;;
+            (*)           nMax="${OPTARG}" ;;
           esac;;
     (N)   case "${OPTARG}" in
-            (*[!0-9]*|'') die -e "(-N) '${OPTARG}' is not a number";;
-            (*)           nCount="${OPTARG}";;
+            (*[!0-9]*|'') die -e "(-N) '${OPTARG}' is not a number" ;;
+            (*)           nCount="${OPTARG}" ;;
           esac;;
     (r)   repeat=true;;
     (z)   case "${OPTARG}" in
-            (*[!0-9]*|'') die -e "(-z) '${OPTARG}' is not a number";;
-            (*)           zeroPad="${OPTARG}";;
+            (*[!0-9]*|'') die -e "(-z) '${OPTARG}' is not a number" ;;
+            (*)           zeroPad="${OPTARG}" ;;
           esac;;
-    (\?)  die -e "Invalid option: '-$OPTARG'.  Try 'rand -h' for usage.";;
-    (:)   die -e "Option '-$OPTARG' requires an argument.";;
+    (\?)  die -e "Invalid option: '-$OPTARG'.  Try 'rand -h' for usage." ;;
+    (:)   die -e "Option '-$OPTARG' requires an argument." ;;
   esac
 done
 
