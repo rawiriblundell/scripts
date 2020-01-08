@@ -16,7 +16,7 @@
 # 'rand' by Heiner Steven:
 # http://www.shelldorado.com/scripts/cmds/rand
 # 'rand' by Malte Skoruppa:
-# http://unix.stackexchange.com/questions/157250/how-to-efficiently-generate-large-uniformly-distributed-random-integers-in-bas
+# https://unix.stackexchange.com/q/157250
 # 'randbits' by Gene Spafford:
 # http://www.diablotin.com/librairie/networking/puis/ch23_09.htm
 ###############################################################################
