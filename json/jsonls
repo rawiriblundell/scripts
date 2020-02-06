@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# A simple GNU-specific demonstration of 'ls' with json output
+
+include() {
+  [ -r "${1?}" ] && . "${1}"
+}
+
+include jsonprint.sh
+
+shopt -s dotglob nullglob
+
+json_open
+json_arr_open "${PWD}"
+loop_iter=0
+set -- *
+fsobj_count="${#}"
+for fsobj in *; do
+  type="$(stat -c "%F" "${fsobj}")"
+  deref="$(stat -c "%N" "${fsobj}" | tr -d "'")"
+  json_obj_open
+  while read -r name uname gname perms size modified accessed birth; do
+    json_str type "${type}"
+    json_str name "${name}"
+    json_str owner "${uname}"
+    json_str group "${gname}"
+    json_num permissions "${perms}"
+    json_num sizeBytes "${size}"
+    json_num lastModified "${modified}"
+    json_num lastAccessed "${accessed}"
+    json_num birth "${birth}"
+    json_str -n dereference "${deref}"
+  done < <(stat -c "%n %U %G %a %s %Y %X %W" "${fsobj}")
+  (( loop_iter++ ))
+  if (( loop_iter >= fsobj_count )); then
+    json_obj_close -n
+  else
+    json_obj_close
+  fi
+done
+json_arr_close -n
+json_close
