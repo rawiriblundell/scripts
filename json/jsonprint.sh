@@ -1,4 +1,4 @@
-# shellcheck shell=sh
+# shellcheck shell=ksh
 # The MIT License (MIT)
 
 # Copyright (c) 2020 -, Rawiri Blundell
@@ -20,6 +20,11 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+################################################################################
+# Author's note: This is an exercise for my own amusement/education.
+# If it works well for you, fantastic!  If you have ideas, please submit them :)
+# If you need more power, check out https://github.com/jpmens/jo
 
 # Our variant of die()
 json_vorhees() {
@@ -86,9 +91,39 @@ json_obj_close() {
   esac 
 }
 
+# A function to escape characters that must be escaped in JSON
+# This converts stdin into a single column of octals
+# We then search for our undesirable octals and emit our replacements
+# Modified from https://stackoverflow.com/a/23166624
+# Some of these might not be strictly necessary... YMMV...
+json_str_escape() {
+  od -A n -t o1 -v | tr ' \t' '\n\n' | grep . | sed '$d' |
+    while read -r _char; do
+      case "${_char}" in
+        ('00[0-7]')  printf -- '\u00%s' "${_char}" ;;
+        ('02[0-7]')  printf -- '\u00%s' "$(( _char - 10 ))" ;;
+        ('010')  printf -- '%s' "\b" ;;
+        ('011')  printf -- '%s' "\t" ;;
+        ('012')  printf -- '%s' "\n" ;;
+        ('013')  printf -- '\u00%s' "0B" ;;
+        ('014')  printf -- '%s' "\f" ;;
+        ('015')  printf -- '%s' "\r" ;;
+        ('016')  printf -- '\u00%s' "0E" ;;
+        ('017')  printf -- '\u00%s' "0F" ;;
+        ('030')  printf -- '\u00%s' "18" ;;
+        ('031')  printf -- '\u00%s' "19" ;;
+        ('042')  printf -- '%s' "\\\"" ;;
+        ('047')  printf -- '%s' "\'" ;;
+        ('057')  printf -- '%s' "\/" ;;
+        ('134')  printf -- '%s' "\\" ;;
+        (''|*)   printf -- \\${_char} ;;
+      esac
+    done
+}
+
 # Format a string keypair
-# With '-n' or '--nocomma', we return '"key": "value",'
-# Without either arg, we return '"key": "value"'
+# With '-n' or '--nocomma', we return '"key": "value"'
+# Without either arg, we return '"key": "value",'
 # If the value is blank or literally 'null', we return 'null' unquoted
 json_str() {
   case "${1}" in
@@ -104,8 +139,8 @@ json_str() {
 }
 
 # Format a number keypair using signed decimal.  Numbers are unquoted.
-# With '-n' or '--nocomma', we return '"key": value,'
-# Without either arg, we return '"key": value'
+# With '-n' or '--nocomma', we return '"key": value'
+# Without either arg, we return '"key": value,'
 # If the value is not a number, an error will be thrown
 # TO-DO: Possibly extend to allow floats and scientific notataion
 json_num() {
@@ -121,8 +156,8 @@ json_num() {
 }
 
 # Format a boolean true/false keypair.  Booleans are unquoted.
-# With '-n' or '--nocomma', we return '"key": value,'
-# Without either arg, we return '"key": value'
+# With '-n' or '--nocomma', we return '"key": value'
+# Without either arg, we return '"key": value,'
 # If the value is neither 'true' or 'false', an error will be thrown
 # TO-DO: Extend to map extra bools
 json_bool() {

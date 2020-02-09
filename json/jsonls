@@ -10,27 +10,36 @@ include jsonprint.sh
 
 shopt -s dotglob nullglob
 
+# If we get to this point, let's start building our JSON output
 json_open
 json_arr_open "${PWD}"
+
+# We keep a track of how many files are here and how many times we loop
+# This is so that we know not to emit a trailing comma on the last object
 loop_iter=0
 set -- *
 fsobj_count="${#}"
 for fsobj in *; do
-  type="$(stat -c "%F" "${fsobj}")"
-  deref="$(stat -c "%N" "${fsobj}" | tr -d "'")"
+  fsobj_type="$(stat -c "%F" "${fsobj}")"
+  fsobj_link="$(stat -c "%N" "${fsobj}" | tr -d "'")"
+  fsobj_name="$(stat -c "%n" "${fsobj}" | json_str_escape)"
   json_obj_open
-  while read -r name uname gname perms size modified accessed birth; do
-    json_str type "${type}"
-    json_str name "${name}"
-    json_str owner "${uname}"
-    json_str group "${gname}"
-    json_num permissions "${perms}"
-    json_num sizeBytes "${size}"
-    json_num lastModified "${modified}"
-    json_num lastAccessed "${accessed}"
-    json_num birth "${birth}"
-    json_str -n dereference "${deref}"
-  done < <(stat -c "%n %U %G %a %s %Y %X %W" "${fsobj}")
+  # Read in a formatted sequence from 'stat' and assign to our vars
+  while read -r fsobj_uid fsobj_gid fsobj_mode fsobj_size fsobj_mtime fsobj_atime fsobj_birth; do
+    # Place those vars into our JSON structure
+    json_str fileName "${fsobj_name}"
+    json_str fileOwner "${fsobj_uid}"
+    json_str fileGroup "${fsobj_gid}"
+    json_num fileMode "${fsobj_mode}"
+    json_num sizeBytes "${fsobj_size}"
+    json_num fileModified "${fsobj_mtime}"
+    json_num fileAccessed "${fsobj_atime}"
+    (( fsobj_birth > 0 )) && json_num fileCreated "${fsobj_birth}"
+    json_str fileType "${fsobj_type}"
+    json_str -n dereference "${fsobj_link}"
+  done < <(stat -c "%U %G %a %s %Y %X %W" "${fsobj}")
+  # As above, track our loop count so that we can appropriately
+  # emit the last object without a trailing comma
   (( loop_iter++ ))
   if (( loop_iter >= fsobj_count )); then
     json_obj_close -n
