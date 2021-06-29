@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# TODO: Attempt to auto-detect and prompt user to confirm?
+# Get your location code from https://weather.codes/search
+location_code=NZXX0049
+
+################################################################################
+# Traps and die()
+################################################################################
+# Catch our own PID to ensure that die() works within subshells
+_self_pid="${$}"
+export _self_pid
+
+# Print errors to stderr and then exit
+die() {  
+  if [ -t 0 ]; then
+    printf -- '\e[31m\n[!] %s\e[0m\n\n' "${*}" >&2
+  else
+    printf -- '\n[!] %s\n\n' "${*}" >&2
+  fi
+  # Send a TERM signal to the top level PID, this is trapped and exit 1 is forced
+  kill -s TERM "${_self_pid}"
+}
+
+exit_on_SIGINT() { die Program Interrupted; }
+exit_on_SIGTERM() { die Program Terminated; }
+
+trap exit_on_SIGINT SIGINT
+trap exit_on_SIGTERM SIGTERM
+
+################################################################################
+# Init
+################################################################################
+# We ensure the following env vars are set
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+
+config_dir="${XDG_CONFIG_HOME}/dynamic_wallpapers"
+data_dir="${XDG_DATA_HOME}/dynamic_wallpapers"
+state_dir="${XDG_STATE_HOME}/dynamic_wallpapers"
+
+[[ ! -d "${XDG_CONFIG_HOME}" ]] && die "${XDG_CONFIG_HOME} not found"
+[[ ! -d "${XDG_DATA_HOME}" ]] && die "${XDG_DATA_HOME} not found"
+[[ ! -d "${XDG_STATE_HOME}" ]] && die "${XDG_STATE_HOME} not found"
+
+mkdir -p "${config_dir}" || die "Could not create ${config_dir}"
+mkdir -p "${data_dir}" || die "Could not create ${data_dir}"
+mkdir -p "${state_dir}" || die "Could not create ${state_dir}"
+
+################################################################################
+
+get_sunrise_sunset() {
+  curl -s "https://weather.com/weather/today/l/${1:?No location code}" | 
+    grep SunriseSunset | 
+    grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))'
+}
+
+seconds_since_midnight() {
+  date -d "1970-01-01 UTC ${1:-$(date +%T)}" +%s
+}
+
+write_state() {
+  printf -- '%s\n' "${1}" > "${config_dir}/current_state"
+}
+
+case "${set_name}" in
+  ('')
+
+  ;;
+  (*)
+    [[ ! -d "${data_dir}/${set_name}" ]] && die "${data_dir}/${set_name}/ not found"
+    [[ ! -f "${config_dir}/${set_name}" ]] && die "${config_dir}/${set_name} not found"
+    config_file="${config_dir}/${set_name}"
+  ;;
+esac
+
+mapfile -t sunbounds < <(get_sunrise_sunset "${location_code}")
+bound_start=$(seconds_since_midnight "${sunbounds[0]}")
+bound_end=$(seconds_since_midnight "${sunbounds[1]}")
+bound_size=$(( bound_end - bound_start ))
+current_secs=$(seconds_since_midnight)
+read -r current_wallpaper < "${config_dir}/current_state"
+
+# Load our images into an array
+image_set=( "${data_dir}/${set_name}/"* )
+
+# A one-image set is not what this script is about
+(( "${#image_set[@]}" <= 1 )) && die "${set_name} set size too small (<=1)"
+
+# Let's resolve our overnight image first
+# Start by selecting the last element in the array
+overnight_wallpaper="${image_set[${#image_set[@]}-1]}"
+if (( current_secs > bound_end )) && (( current_secs < bound_start )); then
+  if [[ "${current_wallpaper}" != "${overnight_wallpaper}" ]]; then
+    set_wallpaper "${overnight_wallpaper}"
+    write_state "${overnight_wallpaper}"
+  fi
+fi
+
+# If there's only two images in our set,
+# we treat the first as daytime, and the second as nighttime
+#
+# If there's more than one image in the set, we work on the following logic:
+# Between sunset and sunrise, we use the last image in the set
+# We sequence the rest in reverse order and then in-order
+# For example, with an 8 image set:
+# Overnight: 8
+# Daytime: 7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7
+
+if (( "${#image_set[@]}" == 2 )); then
+  # If it's daytime, then we load up the first image in the set
+  if (( current_secs >= bound_start )) && (( current_secs <= bound_end )); then
+    if [[ "${current_wallpaper}" != "${image_set[0]}" ]]; then
+      set_wallpaper "${image_set[0]}"
+      write_state "${image_set[0]}"
+    fi
+  fi
+else
+  for (( i="${#image_set[@]}";i>=0;i-- )); do
+    (( i == "${#image_set[@]}" )) && continue
+    set_sequence+=( "${image_set[i]}" )
+  done
+  for (( i=1;i<="${#image_set[@]}";i++ )); do
+    (( i == "${#image_set[@]}" )) && continue
+    set_sequence+=( "${image_set[i]}" )
+  done
+  duration="$(( bound_size / "${#set_sequence[@]}" ))"
+  counter=0
+  test_bound="${bound_start}"
+  while (( test_bound <= current_secs )); do
+    test_bound=$(( test_bound + duration ))
+    (( counter++ ))
+  done
+  set_wallpaper "${image_set[${set_sequence[counter]}]}"
+fi
