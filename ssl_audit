@@ -94,7 +94,11 @@ elif command -v pkgchk >/dev/null 2>&1; then
     pkgchk -l -p "${1:?No file defined}" | 
       sed '1,/Referenced by the following/d;/Current status/,$d' |
       trim |
-      paste -sd ","
+      paste -sd "," -
+  }
+else
+  get_file_provider() {
+    printf -- '%s\n' "UNKNOWN"
   }
 fi
 
@@ -240,7 +244,7 @@ read_cert_algorithm() {
 read_cert_cn() {
   openssl x509 -in "${1:?No Cert Defined}" -subject -noout -nameopt multiline |
     awk -F '= ' '/commonName/{print $2}' |
-    paste -sd ","
+    paste -sd "," -
 }
 
 read_cert_email() {
@@ -270,7 +274,7 @@ read_cert_sans() {
   openssl x509 -in "${1:?No Cert Defined}" -text -noout |
     grep "DNS:" |
     trim |
-    paste -sd ' ' |
+    paste -sd ' ' - |
     grep .
 }
 
@@ -293,7 +297,7 @@ read_cert_fingerprint() {
 # Calculate how many days until the cert expires
 # Short circuit versions of 'date' that don't support '-d' (e.g. Solaris)
 # In this instance, we want to call 'convert_time_to_epoch()'
-if date -d yesterday 2>&1 | grep illegal >/dev/null 2>&1; then
+if date -d yesterday 2>&1 | grep -E 'illegal|usage' >/dev/null 2>&1; then
   calculate_cert_epoch() {
     convert_time_to_epoch "$(read_cert_expiry "${1:?No Cert Defined}")"
   }
