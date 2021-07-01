@@ -4,6 +4,9 @@
 # Get your location code from https://weather.codes/search
 location_code=NZXX0049
 
+# Maximum age for a config file, in seconds
+config_max_age=604800 # 604800 = 1 week
+
 ################################################################################
 # Traps and die()
 ################################################################################
@@ -55,9 +58,88 @@ seconds_since_midnight() {
   date -d "1970-01-01 UTC ${1:-$(date +%T)}" +%s
 }
 
-get_state() {
-  if [[ -r "${config_dir}/current_state" ]]; then
-    . "${config_dir}/current_state"
+read_config() {
+  if [[ -r "${1:?No config defined}" ]]; then
+    . "${1}"
+  fi
+}
+
+# If there's only two images in our set,
+# we treat the first as daytime, and the second as nighttime
+#
+# If there's more than one image in the set, we work on the following logic:
+# Between sunset and sunrise, we use the last image in the set
+# We sequence the rest in reverse order and then in-order
+# For example, with an 8 image set:
+# Overnight: 8
+# Daytime: 7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7
+generate_config() {
+  [[ -d "${data_dir}/${set_name}" ]] || die "${data_dir}/${set_name} not found."
+
+  # Load our images into an array
+  image_set=( "${data_dir}/${set_name}/"* )
+
+  # A one-image set is not what this script is about
+  (( "${#image_set[@]}" <= 1 )) && die "${set_name} set size too small (<=1)"
+
+  # Gather our time boundaries
+  mapfile -t sunbounds < <(get_sunrise_sunset "${location_code}")
+  bound_start="$(seconds_since_midnight "${sunbounds[0]}")"
+  bound_end="$(seconds_since_midnight "${sunbounds[1]}")"
+  bound_size="$(( bound_end - bound_start ))"
+  duration="$(( bound_size / "${#image_set[@]}" ))"
+
+  # The config file is in 'start:finish:filename' format
+  # We handle 2-image sets specifically to demonstrate the config structure
+  if (( "${#image_set[@]}" == 2 )); then
+    {
+      # Midnight to sunrise, we use the overnight image
+      printf -- '%s:%s:%s\n' "0" "${bound_start}" "${image_set[1]}"
+      # Sunrise to sunset, we use the daytime image
+      printf -- '%s:%s:%s\n' "${bound_start}" "${bound_end}" "${image_set[0]}"
+      # Sunset to midnight, we use the overnight image
+      printf -- '%s:%s:%s\n' "${bound_end}" "86400" "${image_set[1]}"
+    } > "${state_dir}/${set_name}.conf"
+  else
+    # Assign the last image in the array to a variable, then remove it from the array
+    overnight_image="${image_set[${#image_set[@]}-1]}"
+    unset image_set[${#image_set[@]}-1]
+
+    # Build a sequence of images, working from night to day and back to night
+    for (( i="${#image_set[@]}";i>=0;--i )); do
+      (( i == "${#image_set[@]}" )) && continue
+      set_sequence+=( "${image_set[i]}" )
+    done
+    for (( i=1;i<="${#image_set[@]}";++i )); do
+      (( i == "${#image_set[@]}" )) && continue
+      set_sequence+=( "${image_set[i]}" )
+    done
+
+    # Figure out the duration that each image should run for
+    duration=$(( bound_size / ("${#set_sequence[@]}" + 2) ))
+
+    {
+      # Midnight to sunrise, we use the overnight image
+      printf -- '%s:%s:%s\n' "0" "${bound_start}" "${overnight_image}"
+
+      start="${bound_start}"
+      finish="$(( bound_start + duration ))"
+
+      for image in "${set_sequence[@]}"; do
+        printf -- '%s:%s:%s\n' "${start}" "${finish}" "${image}"
+        start="${finish}"
+        finish="$(( finish + duration ))"
+      done
+      
+      # Sunset to midnight, we use the overnight image
+      printf -- '%s:%s:%s\n' "${bound_end}" "86400" "${overnight_image}"
+    } > "${state_dir}/${set_name}.conf"
+  fi
+}
+
+read_state() {
+  if [[ -r "${state_dir}/current_state" ]]; then
+    . "${state_dir}/current_state"
   fi
 }
 
@@ -67,7 +149,7 @@ set_state() {
       "current_wallpaper=${current_wallpaper}" \
       "current_set_name=${set_name}" \
       "current_set_path=${set_path}"
-  } > "${config_dir}/current_state"
+  } > "${state_dir}/current_state"
 }
 
 usage() {
@@ -75,13 +157,43 @@ usage() {
   exit "${1:-0}"
 }
 
-mapfile -t sunbounds < <(get_sunrise_sunset "${location_code}")
-bound_start=$(seconds_since_midnight "${sunbounds[0]}")
-bound_end=$(seconds_since_midnight "${sunbounds[1]}")
-bound_size=$(( bound_end - bound_start ))
+################################################################################
+
 current_secs=$(seconds_since_midnight)
 
 get_state
+
+# Define the set_path variable
+set_path="${data_dir}/${set_name}"
+
+# Define the set_config variable
+set_config="${state_dir}/${set_name}.conf"
+
+# Does the image set have a config in the state_dir?
+# We keep disposable configs in files within state_dir rather than a config_dir,
+# and rather than generating every run, in order to keep sun-up and sun-down
+# aligned and to reduce traffic to/from weather.com
+if [[ -f "${set_config}" ]]; then
+  # Load it up so that we get $state_file_generated
+  . "${set_config}"
+  # If it's too old, regenerate and reload it
+  if (( $(date +%s) > (state_file_generated + config_max_age) )); then
+    generate_config "${set_name}"
+    . "${set_config}"
+  fi
+# If, on the other hand, it doesn't exist, generate and load it
+else
+  generate_config "${set_name}"
+  . "${set_config}"
+fi
+
+# By this point, the config should be sorted, so let's work through it
+while IFS=: read -r start finish wallpaper; do
+  if (( current_secs >= start )) && (( current_secs <= finish )); then
+    set_wallpaper "${wallpaper}"
+    break
+  fi
+done < "${set_config}"
 
 case "${1}" in
   (-h|--help|help|--usage|usage)
@@ -104,82 +216,4 @@ case "${1}" in
   ;;
 esac
 
-# Define the set_path variable
-set_path="${data_dir}/${set_name}"
-
-# Load our images into an array
-image_set=( "${data_dir}/${set_name}/"* )
-
-# A one-image set is not what this script is about
-(( "${#image_set[@]}" <= 1 )) && die "${set_name} set size too small (<=1)"
-
-# Let's resolve our overnight image first
-# Start by selecting the last element in the array
-overnight_wallpaper="${image_set[${#image_set[@]}-1]}"
-if (( current_secs > bound_end )) && (( current_secs < bound_start )); then
-  if [[ "${current_wallpaper}" != "${overnight_wallpaper}" ]]; then
-    set_wallpaper "${overnight_wallpaper}"
-    write_state "${overnight_wallpaper}"
-  fi
-fi
-
-# If there's only two images in our set,
-# we treat the first as daytime, and the second as nighttime
-#
-# If there's more than one image in the set, we work on the following logic:
-# Between sunset and sunrise, we use the last image in the set
-# We sequence the rest in reverse order and then in-order
-# For example, with an 8 image set:
-# Overnight: 8
-# Daytime: 7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7
-
-if (( "${#image_set[@]}" == 2 )); then
-  # If it's daytime, then we load up the first image in the set
-  if (( current_secs >= bound_start )) && (( current_secs <= bound_end )); then
-    if [[ "${current_wallpaper}" != "${image_set[0]}" ]]; then
-      set_wallpaper "${image_set[0]}"
-      write_state "${image_set[0]}"
-    fi
-  fi
-else
-  for (( i="${#image_set[@]}";i>=0;i-- )); do
-    (( i == "${#image_set[@]}" )) && continue
-    set_sequence+=( "${image_set[i]}" )
-  done
-  for (( i=1;i<="${#image_set[@]}";i++ )); do
-    (( i == "${#image_set[@]}" )) && continue
-    set_sequence+=( "${image_set[i]}" )
-  done
-  duration="$(( bound_size / "${#set_sequence[@]}" ))"
-  counter=0
-  test_bound="${bound_start}"
-  while (( test_bound <= current_secs )); do
-    test_bound=$(( test_bound + duration ))
-    (( counter++ ))
-  done
-  set_wallpaper "${image_set[${set_sequence[counter]}]}"
-fi
-
-
-start:finish:filename
-0:${bound_start}:01.jpg
-
-start=0
-finish="${bound_start}"
-
-printf -- '%s:%s:%s\n' "${start}" "${finish}" "${image_set[${#image_set[@]}-1]}"
-
-start="${finish}"
-finish="$(( finish + duration ))"
-
-
-
-while IFS=: read -r start finish wallpaper; do
-  if (( current_secs >= start )) && (( current_secs <= finish )); then
-    if [[ ! -f /"${wallpaper}" ]]; then
-
-    fi
-    set_wallpaper "${wallpaper}"
-    break
-  fi
-done < config_file
+################################################################################
