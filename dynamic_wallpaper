@@ -34,6 +34,7 @@ trap exit_on_SIGTERM SIGTERM
 ################################################################################
 # Init: ensure required vars and directories are in place
 ################################################################################
+DISPLAY=:0
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 
@@ -42,12 +43,14 @@ XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 
 data_dir="${XDG_DATA_HOME}/dynamic_wallpapers"
 state_dir="${XDG_STATE_HOME}/dynamic_wallpapers"
+state_file="${state_dir}/current_state"
 
 mkdir -p "${data_dir}" || die "Could not create ${data_dir}"
 mkdir -p "${state_dir}" || die "Could not create ${state_dir}"
 
 ################################################################################
-
+# Define our functions
+################################################################################
 get_sunrise_sunset() {
   curl -s "https://weather.com/weather/today/l/${1:?No location code}" | 
     grep SunriseSunset | 
@@ -58,48 +61,45 @@ seconds_since_midnight() {
   date -d "1970-01-01 UTC ${1:-$(date +%T)}" +%s
 }
 
-read_config() {
-  if [[ -r "${1:?No config defined}" ]]; then
-    . "${1}"
-  fi
-}
-
 # If there's only two images in our set,
 # we treat the first as daytime, and the second as nighttime
 #
 # If there's more than one image in the set, we work on the following logic:
 # Between sunset and sunrise, we use the last image in the set
 # We sequence the rest in reverse order and then in-order
+# i.e. sunrise to sunpeak => sunpeak to sunset.
 # For example, with an 8 image set:
 # Overnight: 8
 # Daytime: 7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7
 generate_config() {
-  [[ -d "${data_dir}/${set_name}" ]] || die "${data_dir}/${set_name} not found."
+  _set_name="${1:?No target set specified}"
+  [[ -d "${data_dir}/${_set_name}" ]] || die "${data_dir}/${_set_name} not found."
 
   # Load our images into an array
-  image_set=( "${data_dir}/${set_name}/"* )
+  image_set=( "${data_dir}/${_set_name}/"* )
 
   # A one-image set is not what this script is about
-  (( "${#image_set[@]}" <= 1 )) && die "${set_name} set size too small (<=1)"
+  (( "${#image_set[@]}" <= 1 )) && die "${_set_name} set size too small (<=1)"
 
   # Gather our time boundaries
   mapfile -t sunbounds < <(get_sunrise_sunset "${location_code}")
   bound_start="$(seconds_since_midnight "${sunbounds[0]}")"
   bound_end="$(seconds_since_midnight "${sunbounds[1]}")"
   bound_size="$(( bound_end - bound_start ))"
-  duration="$(( bound_size / "${#image_set[@]}" ))"
 
   # The config file is in 'start:finish:filename' format
-  # We handle 2-image sets specifically to demonstrate the config structure
+  # Here we handle 2-image sets specifically to demonstrate the config structure
   if (( "${#image_set[@]}" == 2 )); then
     {
+      # Print the file's generation time
+      printf -- '%s\n' "config_file_generated=$(date +%s)"
       # Midnight to sunrise, we use the overnight image
       printf -- '%s:%s:%s\n' "0" "${bound_start}" "${image_set[1]}"
       # Sunrise to sunset, we use the daytime image
       printf -- '%s:%s:%s\n' "${bound_start}" "${bound_end}" "${image_set[0]}"
       # Sunset to midnight, we use the overnight image
       printf -- '%s:%s:%s\n' "${bound_end}" "86400" "${image_set[1]}"
-    } > "${state_dir}/${set_name}.conf"
+    } > "${state_dir}/${_set_name}.conf"
   else
     # Assign the last image in the array to a variable, then remove it from the array
     overnight_image="${image_set[${#image_set[@]}-1]}"
@@ -119,6 +119,9 @@ generate_config() {
     duration=$(( bound_size / ("${#set_sequence[@]}" + 2) ))
 
     {
+      # Print the file's generation time
+      printf -- '%s\n' "config_file_generated=$(date +%s)"
+
       # Midnight to sunrise, we use the overnight image
       printf -- '%s:%s:%s\n' "0" "${bound_start}" "${overnight_image}"
 
@@ -133,24 +136,97 @@ generate_config() {
       
       # Sunset to midnight, we use the overnight image
       printf -- '%s:%s:%s\n' "${bound_end}" "86400" "${overnight_image}"
-    } > "${state_dir}/${set_name}.conf"
+    } > "${state_dir}/${_set_name}.conf"
   fi
 }
 
-read_state() {
-  if [[ -r "${state_dir}/current_state" ]]; then
-    . "${state_dir}/current_state"
-  fi
+get_random_set() {
+  # Create an array of set directories from within data_dir
+  mapfile -t set_list < <(find "${data_dir}" -maxdepth 1 -type d | grep -xv "${data_dir}")
+  (( "${#set_list[@]}" == 0 )) && die "No image sets found in ${data_dir}"
+  # Randomly select a set from the array
+  set_name="${set_list[$RANDOM % ${#set_list[@]}]}"
+  printf -- '%s\n' "Randomly selected ${data_dir}/${set_name}..."
 }
 
 set_state() {
   {
     printf -- '%s\n' "state_file_generated=$(date +%s)" \
-      "current_wallpaper=${current_wallpaper}" \
-      "current_set_name=${set_name}" \
-      "current_set_path=${set_path}"
-  } > "${state_dir}/current_state"
+      "wallpaper=${wallpaper}" \
+      "set_name=${set_name}" \
+      "set_path=${set_path}"
+  } > "${state_file}"
 }
+
+case "${DESKTOP_SESSION}" in
+  (mate)
+    set_wallpaper() {
+      gsettings set org.mate.background picture-filename "${1:?No image specified}"
+      gsettings set org.mate.screensaver picture-filename "${1:?No image specified}"
+    }
+  ;;
+  (XFCE|Xubuntu)
+    set_wallpaper() {
+      local screen monitor
+      screen="$(xrandr --listactivemonitors | awk -F ' ' 'END {print $1}' | tr -d \:)"
+      monitor="$(xrandr --listactivemonitors | awk -F ' ' 'END {print $2}' | tr -d \*+)"
+      xfconf-query \
+        --channel xfce4-desktop \
+        --property "/backdrop/screen${screen}/monitor${monitor}/workspace0/last-image" \
+        --set "${1:?No image specified}"
+    }
+  ;;
+  (LXDE) 
+    set_wallpaper() {
+      pcmanfm --set-wallpaper="${1:?No image specified}"
+    }
+  ;;
+  ([Cc]innamon)
+    set_wallpaper() {
+      gsettings set org.cinnamon.desktop.background picture-uri "file:///${1:?No image specified}"
+      gsettings set org.cinnamon.desktop.screensaver picture-uri "file:///${1:?No image specified}"
+    }
+  ;;
+  (Neon|Plasma|KDE)
+    set_wallpaper() {
+      qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
+        var allDesktops = desktops();
+        print (allDesktops);
+        for (i=0;i<allDesktops.length;i++) {
+          d = allDesktops[i];
+          d.wallpaperPlugin = 'org.kde.image';
+          d.currentConfigGroup = Array('Wallpaper',
+                        'org.kde.image',
+                        'General');
+          d.writeConfig('Image', 'file://${1:?No image specified}')
+        }"
+      kwriteconfig5 --file "${HOME}/.config/kscreenlockerrc" \
+        --group Greeter \
+        --group Wallpaper \
+        --group org.kde.image \
+        --group General \
+        --key Image "file://${1:?No image specified}'"
+    }
+  ;;
+  (GNOME|Ubuntu|Pop|Deepin)
+    set_wallpaper() {
+      gsettings set org.gnome.desktop.background picture-uri "file://${1:?No image specified}"
+      gsettings set org.gnome.desktop.screensaver picture-uri "file://${1:?No image specified}"
+    }
+  ;;
+  (sway)
+    set_wallpaper() {
+      swaybg --image "${1:?No image specified}"
+    }
+  ;;
+  (''|*)
+    if command -v feh >/dev/null 2>&1; then
+      set_wallpaper() {
+        feh --bg-fill "${1:?No image specified}"
+      }
+    fi
+  ;;
+esac
 
 usage() {
   printf -- '%s\n' "Usage: dynamic_wallpapers setname"
@@ -158,62 +234,83 @@ usage() {
 }
 
 ################################################################################
+# Main logic
+################################################################################
+main() {
+  current_secs=$(seconds_since_midnight)
+  case "${1}" in
+    (-h|--help|help|--usage|usage)
+      usage 0
+    ;;
+    ('')
+      # If blank and state file, use the state
+      if [[ -r "${state_file}" ]]; then
+        # shellcheck source=/dev/null
+        . "${state_file}"
+      # If blank and no state file, choose randomly
+      else
+        get_random_set
+      fi
+    ;;
+    (random)
+      # I considered comparing the set defined in the state file with the output
+      # of get_random_set() to ensure a new set is selected
+      # But that reduces random chance, and what if there's only one or two sets?
+      # If someone reading this in the future feels passionately about this
+      # then I have at least laid out all the groundwork for this to be rewritten
+      get_random_set
+    ;;
+    (*)
+      if [[ -d "${data_dir}/${1}" ]]; then
+        set_name="${1}"
+      else
+        die "${data_dir}/${1} does not appear to be a valid image set directory."
+      fi
+    ;;
+  esac
 
-current_secs=$(seconds_since_midnight)
+  # Define the set_path variable
+  set_path="${data_dir}/${set_name}"
 
-get_state
+  # Define the set_config variable
+  set_config="${state_dir}/${set_name}.conf"
 
-# Define the set_path variable
-set_path="${data_dir}/${set_name}"
-
-# Define the set_config variable
-set_config="${state_dir}/${set_name}.conf"
-
-# Does the image set have a config in the state_dir?
-# We keep disposable configs in files within state_dir rather than a config_dir,
-# and rather than generating every run, in order to keep sun-up and sun-down
-# aligned and to reduce traffic to/from weather.com
-if [[ -f "${set_config}" ]]; then
-  # Load it up so that we get $state_file_generated
-  . "${set_config}"
-  # If it's too old, regenerate and reload it
-  if (( $(date +%s) > (state_file_generated + config_max_age) )); then
+  # Does the image set have a config in the state_dir?
+  # We keep disposable configs in files within state_dir rather than a config_dir,
+  # and rather than generating every run, in order to keep sun-up and sun-down
+  # aligned and to reduce traffic to/from weather.com
+  if [[ -r "${set_config}" ]]; then
+    # Load it up so that we get $config_file_generated
+    # shellcheck source=/dev/null
+    . "${set_config}"
+    # If it's too old, regenerate and reload it
+    # shellcheck disable=SC2154 # state_file_generated is sourced from the config
+    if (( $(date +%s) > (config_file_generated + config_max_age) )); then
+      generate_config "${set_name}"
+      # shellcheck source=/dev/null
+      . "${set_config}"
+    fi
+  # If, on the other hand, it doesn't exist, generate and load it
+  else
     generate_config "${set_name}"
+    # shellcheck source=/dev/null
     . "${set_config}"
   fi
-# If, on the other hand, it doesn't exist, generate and load it
-else
-  generate_config "${set_name}"
-  . "${set_config}"
-fi
 
-# By this point, the config should be sorted, so let's work through it
-while IFS=: read -r start finish wallpaper; do
-  if (( current_secs >= start )) && (( current_secs <= finish )); then
-    set_wallpaper "${wallpaper}"
-    break
-  fi
-done < "${set_config}"
-
-case "${1}" in
-  (-h|--help|help|--usage|usage)
-    usage 0
-  ;;
-  (''|random)
-    # Create an array of set directories from within data_dir
-    set_list=( $(find "${data_dir}" -maxdepth 1 -type d | grep -xv "${data_dir}") )
-    (( "${#set_list[@]}" == 0 )) && die "No image sets found in ${data_dir}"
-    # Randomly select a set from the array
-    set_name="${set_list[$RANDOM % ${#set_list[@]}]}"
-    printf -- '%s\n' "Randomly selected ${data_dir}/${set_name}..."
-  ;;
-  (*)
-    if [[ -d "${data_dir}/${1}" ]]; then
-      set_name="${1}"
-    else
-      die "${data_dir}/${1} does not appear to be a valid image set directory."
+  # By this point, the config should be sorted, so let's work through it
+  while IFS=: read -r start finish wallpaper; do
+    if (( current_secs >= start )) && (( current_secs <= finish )); then
+      set_wallpaper "${wallpaper}"
+      break
     fi
-  ;;
-esac
+  done < "${set_config}"
 
+  # Write the state file
+  set_state
+}
+
+main "${@}"
+
+################################################################################
+# And we're done here, bye!
 ################################################################################
