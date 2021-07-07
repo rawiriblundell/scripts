@@ -1,11 +1,36 @@
 #!/bin/bash
+# A script that changes the wallpaper based on the time of day
+# Auto-adjusts day-start and day-end from weather.com
+# Provenance: https://github.com/rawiriblundell/
 
+################################################################################
+# Copyright and License
+################################################################################
+#  Copyright 2021 Rawiri Blundell
+
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+
+#      http://www.apache.org/licenses/LICENSE-2.0
+
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+################################################################################
+# User configurable constants (i.e. shouldn't need to edit below this section)
+################################################################################
 # TODO: Attempt to auto-detect and prompt user to confirm?
 # Get your location code from https://weather.codes/search
 location_code=NZXX0049
 
 # Maximum age for a config file, in seconds
 config_max_age=604800 # 604800 = 1 week
+
+readonly location_code config_max_age
 
 ################################################################################
 # Traps and die()
@@ -88,6 +113,7 @@ generate_config() {
   bound_size="$(( bound_end - bound_start ))"
 
   # The config file is in 'start:finish:filename' format
+  # start:finish:loop:duration:seq,uence,of,images
   # Here we handle 2-image sets specifically to demonstrate the config structure
   if (( "${#image_set[@]}" == 2 )); then
     {
