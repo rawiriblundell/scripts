@@ -175,6 +175,39 @@ get_random_set() {
   printf -- '%s\n' "Randomly selected ${data_dir}/${set_name}..."
 }
 
+parse_opts() {
+  case "${1}" in
+    (-h|--help|help|--usage|usage)
+      usage 0
+    ;;
+    ('')
+      # If blank and state file, use the state
+      if [[ -r "${state_file}" ]]; then
+        # shellcheck source=/dev/null
+        . "${state_file}"
+      # If blank and no state file, choose randomly
+      else
+        get_random_set
+      fi
+    ;;
+    (random)
+      # I considered comparing the set defined in the state file with the output
+      # of get_random_set() to ensure a new set is selected
+      # But that reduces random chance, and what if there's only one or two sets?
+      # If someone reading this in the future feels passionately about this
+      # then I have at least laid out all the groundwork for this to be rewritten
+      get_random_set
+    ;;
+    (*)
+      if [[ -d "${data_dir}/${1}" ]]; then
+        set_name="${1}"
+      else
+        die "${data_dir}/${1} does not appear to be a valid image set directory."
+      fi
+    ;;
+  esac
+}
+
 set_state() {
   {
     printf -- '%s\n' "state_file_generated=$(date +%s)" \
@@ -264,36 +297,9 @@ usage() {
 ################################################################################
 main() {
   current_secs=$(seconds_since_midnight)
-  case "${1}" in
-    (-h|--help|help|--usage|usage)
-      usage 0
-    ;;
-    ('')
-      # If blank and state file, use the state
-      if [[ -r "${state_file}" ]]; then
-        # shellcheck source=/dev/null
-        . "${state_file}"
-      # If blank and no state file, choose randomly
-      else
-        get_random_set
-      fi
-    ;;
-    (random)
-      # I considered comparing the set defined in the state file with the output
-      # of get_random_set() to ensure a new set is selected
-      # But that reduces random chance, and what if there's only one or two sets?
-      # If someone reading this in the future feels passionately about this
-      # then I have at least laid out all the groundwork for this to be rewritten
-      get_random_set
-    ;;
-    (*)
-      if [[ -d "${data_dir}/${1}" ]]; then
-        set_name="${1}"
-      else
-        die "${data_dir}/${1} does not appear to be a valid image set directory."
-      fi
-    ;;
-  esac
+
+  # Parse any args, defines $set_name
+  parse_opts "${@}"
 
   # Define the set_path variable
   set_path="${data_dir}/${set_name}"
@@ -326,8 +332,43 @@ main() {
   # By this point, the config should be sorted, so let's work through it
   while IFS=: read -r start finish wallpaper; do
     if (( current_secs >= start )) && (( current_secs <= finish )); then
-      set_wallpaper "${wallpaper}"
-      break
+      case "${wallpaper}" in
+        (loop*)
+          # Strip the leading 'loop:'
+          wallpaper="${wallpaper/loop:/}"
+          # Create an associative array
+          declare -A wallpaper_loop
+          # Split $wallpaper up and read it into our associative array
+          while read -r; do
+            case "${REPLY}" in
+              (*:*) wallpaper_loop[${REPLY#*:}]="${REPLY%%:*}" ;;
+              (*)   wallpaper_loop[${REPLY}]=auto ;;
+            esac
+          done < <(tr ',' '\n' <<< "${wallpaper}")
+          # Loop through the array
+          until (( current_secs >= finish )); do
+            for wallpaper in "${!wallpaper_loop[@]}"; do
+              set_wallpaper "${wallpaper}"
+              case "${wallpaper_loop[$wallpaper]}" in
+                (auto)
+                  duration=$(( finish - start ))
+                  sleep "$(( duration / "${#wallpaper_loop[@]}" ))"
+                ;;
+                (*)
+                  sleep "${wallpaper_loop[$wallpaper]}"
+                ;;
+              esac
+              current_secs="$(seconds_since_midnight)"
+            done
+          done
+        ;;
+        (*)
+          if [[ "${current_wallpaper}" != "${wallpaper}" ]]; then
+            set_wallpaper "${wallpaper}"
+            break
+          fi
+        ;;
+      esac
     fi
   done < "${set_config}"
 
