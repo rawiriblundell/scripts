@@ -7,24 +7,24 @@
 ###############################################################################
 # Dynamically build PATH to ensure that locally installed binaries are found
 # Blank a variable for the following dynamic PATH task
-newPath=
+new_path=
 
 # Iterate through a list of potential PATH members and add any found paths to
-# the 'newPath' variable.  This is mosly for the benefit of Solaris. 
+# the 'new_path' variable.  This is mosly for the benefit of Solaris. 
 for dir in /usr/gnu/bin /usr/xpg6/bin /usr/xpg4/bin /usr/kerberos/bin \
   /usr/kerberos/sbin /bin /sbin /usr/bin /usr/sbin /usr/contrib/bin \
   /usr/local/bin /usr/local/sbin /opt/csw/bin /opt/csw/sbin /opt/sfw/bin \
   /opt/sfw/sbin /usr/pkg/bin /usr/sfw/bin /usr/sfw/sbin /snap/bin; do
 
-  [[ -d "${dir}" ]] && newPath="${newPath}:${dir}"
+  [[ -d "${dir}" ]] && new_path="${new_path}:${dir}"
 done
 
-# Now assign our freshly built newPath variable, removing any leading colon
-PATH="${newPath#:}"
+# Now assign our freshly built new_path variable, removing any leading colon
+PATH="${new_path#:}"
 
-# Finally, export the PATH and unset newPath
+# Finally, export the PATH and unset new_path
 export PATH
-unset -v newPath
+unset -v new_path
 
 # If HOSTNAME isn't set, then set it
 if [[ ! "${HOSTNAME}" ]]; then 
@@ -64,6 +64,22 @@ convert_time_to_epoch() {
 
 extract_cert_bundle() {
   awk '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/{ if(/BEGIN/){a++}; out="cert"a".pem"; print >out}' "${1:?No Cert Defined}"
+}
+
+# Try to convert a relative path to an absolute one
+# A slightly adjusted version sourced from https://stackoverflow.com/a/21188136
+get_absolute_path() {
+  _filename="${1}"
+  _parentdir=$(dirname "${_filename}")
+
+  # We only act further if the file actually exists
+  [ -e "${_filename}" ] || return 1
+  if [ -d "${_filename}" ]; then
+    printf -- '%s\n' "$(cd "${_filename}" && pwd)"
+  elif [ -d "${_parentdir}" ]; then
+    printf -- '%s\n' "$(cd "${_parentdir}" && pwd)/$(basename "${_filename}")"
+  fi
+  unset -v _filename _parentdir
 }
 
 # date +%s is not portable, so we provide this function
@@ -123,7 +139,7 @@ is_symlink() {
 # A portability function for older systems that don't have the mapfile builtin
 if ! command -v mapfile >/dev/null 2>&1; then
   mapfile() {
-    local _arrName i IFS
+    local _array_name i IFS
     unset MAPFILE
 
     set -f        # Turn off globbing
@@ -140,7 +156,7 @@ if ! command -v mapfile >/dev/null 2>&1; then
 
     # If an argument is left, it's our array name, otherwise this
     # function will export an array named MAPFILE (as the real 'mapfile' does)
-    _arrName="${1}"
+    _array_name="${1}"
 
     # Read all of the input
     i=0
@@ -155,9 +171,9 @@ if ! command -v mapfile >/dev/null 2>&1; then
 
     # Finally, rename the array if required
     # I would love to know a better way to handle this
-    if [[ -n "${_arrName}" ]]; then
+    if [[ -n "${_array_name}" ]]; then
       # shellcheck disable=SC2034
-        eval "${_arrName}=( \"\${MAPFILE[@]}\" )"
+        eval "${_array_name}=( \"\${MAPFILE[@]}\" )"
     fi
 
     # Set f and H back to normal
@@ -223,22 +239,22 @@ read_cert_active() {
 }
 
 read_cert_algorithm() {
-  local certAlgo
-  certAlgo=$(read_cert "${1:?No Cert Defined}" | 
+  local cert_algorithm
+  cert_algorithm=$(read_cert "${1:?No Cert Defined}" | 
     awk -F ': ' '/Signature Algorithm/{print $2; exit}')
 
   # Sometimes openssl isn't new enough to recognise a human friendly name
   # and returns an oid instead.  We map these cases here, 
   # reference: http://oid-info.com
-  case "${certAlgo}" in
-    ('1.2.840.10045.4.3.1') certAlgo="ecdsa-with-SHA224" ;;
-    ('1.2.840.10045.4.3.2') certAlgo="ecdsa-with-SHA256" ;;
-    ('1.2.840.10045.4.3.3') certAlgo="ecdsa-with-SHA384" ;;
-    ('1.2.840.10045.4.3.4') certAlgo="ecdsa-with-SHA512" ;;
+  case "${cert_algorithm}" in
+    ('1.2.840.10045.4.3.1') cert_algorithm="ecdsa-with-SHA224" ;;
+    ('1.2.840.10045.4.3.2') cert_algorithm="ecdsa-with-SHA256" ;;
+    ('1.2.840.10045.4.3.3') cert_algorithm="ecdsa-with-SHA384" ;;
+    ('1.2.840.10045.4.3.4') cert_algorithm="ecdsa-with-SHA512" ;;
     (*) : ;;
   esac
 
-  printf -- '%s\n' "${certAlgo}"
+  printf -- '%s\n' "${cert_algorithm}"
 }
 
 read_cert_cn() {
@@ -308,10 +324,10 @@ else
 fi
 
 calculate_cert_expiry() {
-  local certEpoch
-  curEpoch=$(get_epoch)
-  certEpoch=$(calculate_cert_epoch "${1:?No Cert Defined}")
-  printf -- '%s\n' "$(( ( certEpoch - curEpoch ) / 86400 )) days"
+  local cert_epoch
+  cur_epoch=$(get_epoch)
+  cert_epoch=$(calculate_cert_epoch "${1:?No Cert Defined}")
+  printf -- '%s\n' "$(( ( cert_epoch - cur_epoch ) / 86400 )) days"
 }
 
 ###############################################################################
@@ -322,23 +338,25 @@ calculate_cert_expiry() {
 # Otherwise, we just perform a system-wide audit
 case "${1}" in
   (-a)
-    builtIn=true
-    appendPath="${2}"
+    built_in=true
+    [[ -r "${2}" ]] && append_path="$(get_absolute_path "${2}")"
   ;;
   ('')
-    builtIn=true
+    built_in=true
   ;;
   (*)
-    builtIn=false
-    certPathArray=( "${1}" )
+    built_in=false
+    is_fsobj "${1}" ||
+      { printf -- '%s\n' "${1} does not exist or isn't readable" >&2; exit 1; }
+    cert_pathlist=( "$(get_absolute_path "${1}")" )
   ;;
 esac
 
-if [[ "${builtIn}" = "true" ]]; then
-  # Builtin list of potential paths, please feel free to submit additions!
+if [[ "${built_in}" = "true" ]]; then
+  # builtin list of potential paths, please feel free to submit additions!
   # The default list is sourced from golang's cert detection:
   # https://golang.org/src/crypto/x509/root_linux.go
-  certPathArray=(
+  cert_pathlist=(
     /etc/ssl/certs/ca-certificates.crt
     /etc/pki/tls/certs/ca-bundle.crt
     /etc/ssl/ca-bundle.pem
@@ -355,69 +373,71 @@ if [[ "${builtIn}" = "true" ]]; then
   #  "/etc/pki/tls/certs",           // Fedora/RHEL
   #  "/etc/openssl/certs",           // NetBSD
 
-  # If appendPath is set, add it to the array
-  if [[ "${appendPath}" ]]; then
-    certPathArray=( "${certPathArray[@]}" "${appendPath}" )
+  # If append_path is set, add it to the array
+  if [[ "${append_path}" ]]; then
+    cert_pathlist=( "${cert_pathlist[@]}" "${append_path}" )
   fi
 
   # Use mlocate to identify any other potential certs
   if command -v locate &>/dev/null; then
     while read -r; do
-      certPathArray=( "${certPathArray[@]}" "${REPLY}" )
+      cert_pathlist=( "${cert_pathlist[@]}" "${REPLY}" )
     done < <(locate -r ".*\\.\\(crt\\|cer\\|der\\|jdb\\|jks\\|keystore\\|p7b\\|p7c\\|p12\\|pem\\|pfx\\|ss0\\)$" 2>/dev/null)
   fi
   
   # And/or simple-locate, if it's present
   if [[ -r /var/lib/simple-locate/locate.root ]]; then
      while read -r; do
-      certPathArray=( "${certPathArray[@]}" "${REPLY}" )
+      cert_pathlist=( "${cert_pathlist[@]}" "${REPLY}" )
     done < <(grep -E "\\.(crt|cer|der|jdb|jks|keystore|p7b|p7c|p12|pem|pfx|ss0)$" /var/lib/simple-locate/locate.root 2>/dev/null) 
   fi
 fi
 
 # We expand directories and resolve symlinks
-for certPath in "${certPathArray[@]}"; do
-  if is_directory "${certPath}"; then
+for cert_path in "${cert_pathlist[@]}"; do
+  if is_directory "${cert_path}"; then
     while read -r; do
-      certPathArray=( "${certPathArray[@]}" "${REPLY}" )
-    done < <(find "${certPath}" -type f)
-    mapfile -t certPathArray < <(printf -- '%s\n' "${certPathArray[@]}" | grep -v "^${certPath}$" | grep .)
+      cert_pathlist=( "${cert_pathlist[@]}" "${REPLY}" )
+    done < <(find "${cert_path}" -type f)
+    mapfile -t cert_pathlist < <(printf -- '%s\n' "${cert_pathlist[@]}" | grep -v "^${cert_path}$" | grep .)
   fi
 
   # If it's a symlink, translate it to its target path
   # Remove the symlink and add the target to the array
-  if is_symlink "${certPath}"; then
-    actualCertPath=$(readlink -f "${certPath}")
-    certPathArray=( "${certPathArray[@]}" "${actualCertPath}" )
-    mapfile -t certPathArray < <(printf -- '%s\n' "${certPathArray[@]}" | grep -v "^${certPath}$" | grep .)
+  if is_symlink "${cert_path}"; then
+    actualcert_path=$(readlink -f "${cert_path}")
+    cert_pathlist=( "${cert_pathlist[@]}" "${actualcert_path}" )
+    mapfile -t cert_pathlist < <(printf -- '%s\n' "${cert_pathlist[@]}" | grep -v "^${cert_path}$" | grep .)
   fi
+
+
 done
 
 # Now let's de-duplicate and de-gap the array
-mapfile -t certPathArray < <(printf -- '%s\n' "${certPathArray[@]}" | grep . | sort | uniq)
+mapfile -t cert_pathlist < <(printf -- '%s\n' "${cert_pathlist[@]}" | grep . | sort | uniq)
 
 # Print our header
 print_header
 
 # Now let's sanity check each path in the array through multiple passes
 # First, we check for directories and expand their contents into the array
-for certPath in "${certPathArray[@]}"; do
+for cert_path in "${cert_pathlist[@]}"; do
   # If we hit an empty element, skip to the next one
-  [[ -z "${certPath}" ]] && continue
+  [[ -z "${cert_path}" ]] && continue
 
   # If it doesn't exist, skip to the next one
-  ! is_fsobj "${certPath}" && continue
+  ! is_fsobj "${cert_path}" && continue
 
   # If it's 0-sized, skip to the next one
-  (( $(get_file_size "${certPath}") == 0 )) && continue
+  (( $(get_file_size "${cert_path}") == 0 )) && continue
   
   # If we're not able to read it, let stderr know and skip to the next one
-  if read_cert "${certPath}" 2>&1 | grep -q "unable to load certificate"; then
-    printf -- '%s\n' "Unable to read '${HOSTNAME}:${certPath}' for some reason" >&2
+  if read_cert "${cert_path}" 2>&1 | grep -q "unable to load certificate"; then
+    printf -- '%s\n' "Unable to read '${HOSTNAME}:${cert_path}' for some reason" >&2
     continue
   fi
 
-  certPkg=$(get_file_provider "${certPath}")
+  cert_pkg=$(get_file_provider "${cert_path}")
 
   # Once all of that is FINALLY sorted out, let's process it
   # We want to output CSV format with the following details
@@ -426,52 +446,52 @@ for certPath in "${certPathArray[@]}"; do
   # days since/until expiry; sans; ou; email
 
   # shellcheck disable=SC2126
-  certCount=$(grep -E '\-BEGIN CERTIFICATE\-' "${certPath}" | wc -l)
+  cert_count=$(grep -E '\-BEGIN CERTIFICATE\-' "${cert_path}" | wc -l)
 
-  if (( certCount == 1 )); then
+  if (( cert_count == 1 )); then
     printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
       "${HOSTNAME}" \
-      "${certPath}" \
-      "$(read_cert_cn "${certPath}")" \
-      "$(read_cert_active "${certPath}")" \
-      "$(read_cert_expiry "${certPath}")" \
-      "$(read_cert_serial "${certPath}")" \
-      "$(read_cert_issuer "${certPath}")" \
-      "$(read_cert_algorithm "${certPath}")" \
-      "$(read_cert_fingerprint "${certPath}")" \
-      "$(read_cert_state "${certPath}")" \
-      "$(calculate_cert_expiry "${certPath}")" \
-      "$(read_cert_sans "${certPath}")" \
-      "$(read_cert_ou_name "${certPath}")" \
-      "$(read_cert_email "${certPath}")" \
-      "${certPkg:--}"
+      "${cert_path}" \
+      "$(read_cert_cn "${cert_path}")" \
+      "$(read_cert_active "${cert_path}")" \
+      "$(read_cert_expiry "${cert_path}")" \
+      "$(read_cert_serial "${cert_path}")" \
+      "$(read_cert_issuer "${cert_path}")" \
+      "$(read_cert_algorithm "${cert_path}")" \
+      "$(read_cert_fingerprint "${cert_path}")" \
+      "$(read_cert_state "${cert_path}")" \
+      "$(calculate_cert_expiry "${cert_path}")" \
+      "$(read_cert_sans "${cert_path}")" \
+      "$(read_cert_ou_name "${cert_path}")" \
+      "$(read_cert_email "${cert_path}")" \
+      "${cert_pkg:--}"
   else
-    certTmpDir="/tmp/ssl_report/$(basename "${certPath}")"
-    mkdir -p "${certTmpDir}"
+    cert_tmpdir="/tmp/ssl_report/$(basename "${cert_path}")"
+    mkdir -p "${cert_tmpdir}"
     (
-      cd "${certTmpDir}" || return 1
-      extract_cert_bundle "${certPath}"
-      for certTmpFile in *; do
+      cd "${cert_tmpdir}" || return 1
+      extract_cert_bundle "${cert_path}"
+      for cert_tmpfile in *; do
         # If we're not able to read it, let stderr know and skip to the next one
-        if read_cert "${certTmpFile}" 2>&1 | grep -q "unable to load certificate"; then
+        if read_cert "${cert_tmpfile}" 2>&1 | grep -q "unable to load certificate"; then
           continue
         fi
         printf -- '%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s;%s\n' \
           "${HOSTNAME}" \
-          "${certPath}" \
-          "$(read_cert_cn "${certTmpFile}")" \
-          "$(read_cert_active "${certTmpFile}")" \
-          "$(read_cert_expiry "${certTmpFile}")" \
-          "$(read_cert_serial "${certTmpFile}")" \
-          "$(read_cert_issuer "${certTmpFile}")" \
-          "$(read_cert_algorithm "${certTmpFile}")" \
-          "$(read_cert_fingerprint "${certTmpFile}")" \
-          "$(read_cert_state "${certTmpFile}")" \
-          "$(calculate_cert_expiry "${certTmpFile}")" \
-          "$(read_cert_sans "${certTmpFile}")" \
-          "$(read_cert_ou_name "${certTmpFile}")" \
-          "$(read_cert_email "${certTmpFile}")" \
-          "${certPkg:--}"
+          "${cert_path}" \
+          "$(read_cert_cn "${cert_tmpfile}")" \
+          "$(read_cert_active "${cert_tmpfile}")" \
+          "$(read_cert_expiry "${cert_tmpfile}")" \
+          "$(read_cert_serial "${cert_tmpfile}")" \
+          "$(read_cert_issuer "${cert_tmpfile}")" \
+          "$(read_cert_algorithm "${cert_tmpfile}")" \
+          "$(read_cert_fingerprint "${cert_tmpfile}")" \
+          "$(read_cert_state "${cert_tmpfile}")" \
+          "$(calculate_cert_expiry "${cert_tmpfile}")" \
+          "$(read_cert_sans "${cert_tmpfile}")" \
+          "$(read_cert_ou_name "${cert_tmpfile}")" \
+          "$(read_cert_email "${cert_tmpfile}")" \
+          "${cert_pkg:--}"
       done
     )
   fi
