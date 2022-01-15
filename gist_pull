@@ -1,0 +1,77 @@
+#!/bin/bash
+# Pull all the gists for a given user
+
+user="${1:?No github user defined}"
+base_uri="https://api.github.com/users/${user}/gists"
+gist_path="${2:-${HOME}/git/gists}"
+gist_manifest="${gist_path}/manifest.json"
+
+# Get the top level PID and setup a trap so that we can call die() within subshells
+trap "exit 1" TERM
+_self_pid="${$}"
+export _self_pid
+
+# shellcheck disable=SC2059
+die() {
+  [ -t 0 ] && _diefmt='\e[31;1m====>%s\e[0m\n'
+  printf "${_diefmt:-====>%s\n}" "${0}:(${LINENO}): ${*}" >&2
+  # Send a TERM signal to the top level PID, this is trapped and exit 1 is forced
+  kill -s TERM "${_self_pid}"
+}
+
+requires() {
+  local cmd err_count
+  err_count=0
+  for cmd in "${@}"; do
+    if ! command -v "${cmd}" >/dev/null 2>&1; then
+      err "${cmd} is required but was not found in PATH"
+      (( ++err_count ))
+    fi
+  done
+  (( err_count > 0 )) && exit 1
+  return 0
+}
+
+get_url() {
+  case "${1}" in
+    (--save)  CURL_OPTS=( -O ); shift 1 ;;
+  esac
+  curl "${CURL_OPTS[@]}" -s "${1:?No URL defined}"
+}
+
+main() {
+  requires curl jq mkdir cd
+
+  # Ensure our gist_path exists
+  mkdir -p "${gist_path}" || die "Could not create ${gist_path}"
+
+  # Make our API call and save its output
+  get_url "${base_uri}" > "${gist_manifest}"
+
+  # Parse the saved output, plucking out all our gist id's
+  readarray -t gist_id_list < <(jq -r '.[].id' "${gist_manifest}")
+
+  (
+    cd "${gist_path}" || die "Could not enter ${gist_path}..."
+    for gist_id in "${gist_id_list[@]}"; do
+      printf -- '%s\n' "Syncing ${gist_id}..."
+      gist_uri="https://gist.github.com/${gist_id}/.git"
+      [[ ! -d "${gist_id}" ]] && git clone "${gist_uri}"
+      (
+        cd "${gist_id}" || die "Could not enter ${gist_path}/${gist_id}"
+        # Get the matching filename from the gist_manifest file
+        gist_filename=$(
+          jq -r --arg gist_id "${gist_id}" '
+            .[] | 
+              select(.id==$gist_id) | 
+              .files[].filename' "${gist_manifest}"
+        )
+        ln_target="${gist_path}/${gist_id}/${gist_filename}"
+        ln_link="${gist_path}/${gist_filename}"
+        ln -s "${ln_target}" "${ln_link}" >/dev/null 2>&1
+      )
+    done
+  )
+}
+
+main "${@}"
