@@ -57,7 +57,7 @@ main() {
     cd "${gist_path}" || die "Could not enter ${gist_path}..."
     for gist_id in "${gist_id_list[@]}"; do
       printf -- '%s\n' "Syncing ${gist_id}..."
-      gist_uri="https://gist.github.com/${gist_id}/.git"
+      gist_uri="https://gist.github.com/${gist_id}.git"
       [[ ! -d "${gist_id}" ]] && git clone "${gist_uri}"
       (
         cd "${gist_id}" || die "Could not enter ${gist_path}/${gist_id}"
