@@ -1,6 +1,8 @@
 #!/bin/bash
 # Pull all the gists for a given user
 
+#TO-DO: Identify local copies that have been deleted and sync
+
 user="${1:?No github user defined}"
 base_uri="https://api.github.com/users/${user}/gists"
 gist_path="${2:-${HOME}/git/gists}"
