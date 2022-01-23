@@ -1,8 +1,6 @@
 #!/bin/bash
 # Pull all the gists for a given user
 
-#TO-DO: Identify local copies that have been deleted and sync
-
 user="${1:?No github user defined}"
 base_uri="https://api.github.com/users/${user}/gists"
 gist_path="${2:-${HOME}/git/gists}"
@@ -34,11 +32,44 @@ requires() {
   return 0
 }
 
+# A function to prompt/read an interactive y/n response
+# Stops reading after one character, meaning only 'y' or 'Y' will return 0
+# Any other character, or an optional timeout (-t|--timeout) will return 1
+# Provenance: https://gist.github.com/rawiriblundell/7e8a26d8076ce09b6daa315389f822cd
+confirm() {
+  local confirm_args
+  case "${1}" in
+    (-t|--timeout)
+      confirm_args=( -t "${2}" )
+      set -- "${@:3}"
+    ;;
+  esac
+  
+  read "${confirm_args[@]}" -rn 1 -p "${*:-Continue} [y/N]? "
+  printf -- '%s\n' ""
+  case "${REPLY}" in
+    ([yY]) return 0 ;;
+    (*)    return 1 ;;
+  esac
+}
+
 get_url() {
   case "${1}" in
     (--save)  CURL_OPTS=( -O ); shift 1 ;;
   esac
   curl "${CURL_OPTS[@]}" -s "${1:?No URL defined}"
+}
+
+generate_insitu_ids() {
+  readarray -t insitu_ids < <(
+    find . -maxdepth 1 -type d -name "[a-z0-9]*" -printf '%P\n'
+  )
+}
+
+generate_diff_ids() {
+  readarray -t diff_ids < <(
+    printf -- '%s\n' "${gist_id_list[@]}" "${insitu_ids[@]}" | sort | uniq -u
+  )
 }
 
 main() {
@@ -55,6 +86,8 @@ main() {
 
   (
     cd "${gist_path}" || die "Could not enter ${gist_path}..."
+    generate_insitu_ids
+    generate_diff_ids
     for gist_id in "${gist_id_list[@]}"; do
       printf -- '%s\n' "Syncing ${gist_id}..."
       gist_uri="https://gist.github.com/${gist_id}.git"
@@ -73,6 +106,15 @@ main() {
         ln -s "${ln_target}" "${ln_link}" >/dev/null 2>&1
       )
     done
+    if (( "${#diff_ids[@]}" >= 1 )); then
+      for old_id in "${diff_ids[@]}"; do
+        printf -- '%s\n' "Contents of ${old_id}"
+        ls "${old_id}/"
+        if confirm "${old_id} appears to be abandoned.  Delete?"; then
+          rm -rf "${old_id}"
+        fi
+      done
+    fi
   )
 }
 
