@@ -1,0 +1,83 @@
+#!/bin/bash
+# Download the comment history for a given user
+
+# Ensure that we have curl and jq present
+for cmd in curl jq; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    missing_cmd+=",${cmd}"
+  fi
+done
+command -v gdate >/dev/null 2>&1 && date() { gdate "${@}"; } # MacOS tweak
+{ date --version 2>&1 | grep -q GNU; } || missing_cmd+=",GNU date"
+if (( "${#missing_cmd}" > 0 )); then
+  printf -- '%s\n' "The following requirements were missing: ${missing_cmd/,/}" >&2
+  exit 1
+fi
+
+# Get our user string
+user="${1:?No user specified}"
+# Undocumented feature: fast forward to an epoch point
+new_epoch="${2}"
+
+epoch=$(date +%s)
+base_url="https://api.pushshift.io/reddit/comment/search"
+base_url+="/?author=${user}&size=500&sort=desc&sort_type=created_utc"
+base_dir=/some/path/to/where/you/want/your/json/files/to/be/stored
+req_count=0
+req_limit=50
+
+mkdir -p "${base_dir}" || exit 1
+
+(
+  cd "${base_dir}" || { printf -- '%s\n' "Could not enter ${base_dir}"; exit 1; }
+
+  # Are there files here already?
+  json_files=( ./* )
+
+  # If there aren't any files, then json_files[0] should be literally './*'
+  # In which case we need to make an initial download to get our starting epoch
+  if [[ "${json_files[0]}" = './*' ]]; then
+    # Make our initial download
+    curl -s "${base_url}" > "${base_dir}/${user}.json.latest"
+    new_epoch=$(jq -r 'last(.[] | .[].created_utc)' "${base_dir}/${user}.json.latest")
+    req_count=1
+  fi
+
+  while (( epoch != new_epoch )); do
+    if (( req_count >= req_limit )); then
+      printf -- '%s\n' "Snoozing for 60 seconds to keep the remote server happy..."
+      sleep 60
+      req_count=0
+    fi
+    epoch="${new_epoch}"
+    if [[ ! -f "${base_dir}/${user}.json.${epoch}" ]]; then
+      printf -- '%s\n' "Downloading into ${base_dir}/${user}.json.${epoch} ($(date -d @"${epoch}"))"
+      curl -s "${base_url}&before=${epoch}" > "${base_dir}/${user}.json.${epoch}"
+      sleep 1
+      (( req_count++ ))
+    else
+      printf -- '%s\n' "Exists: ${base_dir}/${user}.json.${epoch}"
+    fi
+    new_epoch=$(jq -r 'last(.[] | .[].created_utc)' "${base_dir}/${user}.json.${epoch}")
+    case "${new_epoch}" in
+      (null)
+        printf -- '%s\n' "End of processing likely reached..."
+        exit 0
+      ;;
+      ('')
+        printf -- '%s\n' "Error getting new epoch value" >&2
+        exit 1
+      ;;
+      (*)
+        # If we have a request limit warning in our data
+        # Remove the file and loop up to the sleep 60 before continuing
+        if grep -q "429 Too Many Requests" ./*; then
+          rm "$(grep -l "429 Too Many Requests" ./*)"
+          req_count="${req_limit}"
+          continue
+        fi
+      ;;
+    esac
+  done
+)
+exit 0
