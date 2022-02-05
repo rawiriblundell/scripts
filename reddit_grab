@@ -1,7 +1,18 @@
 #!/bin/bash
 # Download the comment history for a given user
+# Provenance: https://github.com/rawiriblundell/scripts/blob/master/reddit_grab
 
-# Ensure that we have curl and jq present
+# Pop this at the top so that it's available in the output of 'head'
+usage() {
+cat >&2 << EOF
+Usage: reddit_grab [username]
+Optional args: --start {date}, --finish {date}
+Start must be older than finish e.g. '--start 25/12/2010 --finish 25/12/2016'
+If no args are given, then yesterday's posts will be downloaded
+EOF
+}
+
+# Ensure that we have our dependencies
 for cmd in curl jq; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     missing_cmd+=",${cmd}"
@@ -14,70 +25,160 @@ if (( "${#missing_cmd}" > 0 )); then
   exit 1
 fi
 
-# Get our user string
-user="${1:?No user specified}"
-# Undocumented feature: fast forward to an epoch point
-new_epoch="${2}"
+# Ensure that at least one arg is given
+(( "${#}" == 0 )) && { usage; exit 1; }
 
-epoch=$(date +%s)
+# Get our user string
+user="${1}"
+shift 1
+
+# Things are coming along nicely... Let's set our base variables...
 base_url="https://api.pushshift.io/reddit/comment/search"
 base_url+="/?author=${user}&size=500&sort=desc&sort_type=created_utc"
-base_dir=/some/path/to/where/you/want/your/json/files/to/be/stored
+base_dir="${HOME}/reddit/${user}/comments"
 req_count=0
 req_limit=50
+
+# Set the defaults for these two vars
+end_epoch=$(date --date="00:00:00" +%s)
+start_epoch=$(date --date="00:00:00 yesterday" +%s)
+# Reddit enabled comments on 12 December 2005.
+reddit_epoch=1134298800
+
+# Parse through any extra args
+# A lot of code here to basically cover:
+# --start [anything here] --finish [anything here]
+# OR
+# --finish [anything here] --start [anything here]
+# This is to cater for different date formats which may have spaces e.g.
+# --start 01 Feb 2015 --finish 2016/15/06 08:00
+while (( "${#}" > 0 )); do
+  case "${1}" in
+    (--start)
+      shift 1
+      # We make sure that we exclude "--finish *"
+      case "${*}" in
+        (*--finish*)
+          while [[ "${1}" != "--finish" ]]; do
+            start_date+="${1} "
+            shift 1
+            (( "${#}" == 0 )) && exit 1 # prevent infinite loop
+          done
+        ;;
+        (*)
+          start_date="${*}"
+          shift "${#}"
+        ;;
+      esac
+      if ! start_epoch=$(date --date="${start_date}" +%s) >/dev/null 2>&1; then
+        printf -- '%s\n' "'${start_date}' does not appear to be a valid date format" >&2
+        exit 1
+      fi
+    ;;
+    (--finish)
+      shift 1
+      # We make sure that we exclude "--start *"
+      case "${*}" in
+        (*--start*)
+          while [[ "${1}" != "--start" ]]; do
+            finish_date+="${1} "
+            shift 1
+            (( "${#}" == 0 )) && exit 1 # prevent infinite loop
+          done
+        ;;
+        (*)
+          finish_date="${*}"
+          shift "${#}"
+        ;;
+      esac
+      if ! end_epoch=$(date --date="${finish_date}" +%s) >/dev/null 2>&1; then
+        printf -- '%s\n' "'${finish_date}' does not appear to be a valid date format" >&2
+        exit 1
+      fi
+    ;;
+    (*)
+      printf -- '%s\n' "DEBUG: ${1}"
+      exit 1
+    ;;
+  esac
+done
+
+# Make sure no goofs are being goofs.  Those goofs.
+if (( start_epoch < reddit_epoch )); then
+  printf -- '%s\n' "Reddit has supported comment functionality since 12 December 2005." \
+    "${start_epoch} is a timestamp from before that date.  Please try again." >&2
+  exit 1
+fi
+if (( start_epoch > end_epoch )); then
+  printf -- '%s\n' "Start time cannot be newer than End time" >&2
+  exit 1
+fi
+
+# If we make it to this point, things are going great!
+# Let's throw this function into the mix
+validate_file() {
+  local test_epoch
+  test_epoch=$(jq -r 'last(.[] | .[].created_utc)' "${1:-No file specified}")
+
+  case "${test_epoch}" in
+    ([1-9]*)
+      # Epoch seems legit, so no-op
+      :
+    ;;
+    (null)
+      printf -- '%s\n' "Seems no comments were posted by ${user} that day, removing ${1}..."
+      rm "${1}"
+    ;;
+    (*)
+      # If we have a request limit warning in our data
+      # Remove the file and loop up to the sleep 60 before continuing
+      # TO-DO: Auto-figure out and re-download the failed data
+      if grep -q "429 Too Many Requests" ./*; then
+        rm "$(grep -l "429 Too Many Requests" ./*)"
+        req_count="${req_limit}"
+      fi
+    ;;
+  esac
+}
 
 mkdir -p "${base_dir}" || exit 1
 
 (
   cd "${base_dir}" || { printf -- '%s\n' "Could not enter ${base_dir}"; exit 1; }
 
-  # Are there files here already?
-  json_files=( ./* )
-
-  # If there aren't any files, then json_files[0] should be literally './*'
-  # In which case we need to make an initial download to get our starting epoch
-  if [[ "${json_files[0]}" = './*' ]]; then
-    # Make our initial download
-    curl -s "${base_url}" > "${base_dir}/${user}.json.latest"
-    new_epoch=$(jq -r 'last(.[] | .[].created_utc)' "${base_dir}/${user}.json.latest")
-    req_count=1
-  fi
-
-  while (( epoch != new_epoch )); do
+  # TO-DO: Fix this.  It's so close, but it's also late and I'm tired right now...
+  until (( (end_epoch - 86400) == start_epoch )); do
     if (( req_count >= req_limit )); then
       printf -- '%s\n' "Snoozing for 60 seconds to keep the remote server happy..."
       sleep 60
       req_count=0
     fi
-    epoch="${new_epoch}"
-    if [[ ! -f "${base_dir}/${user}.json.${epoch}" ]]; then
-      printf -- '%s\n' "Downloading into ${base_dir}/${user}.json.${epoch} ($(date -d @"${epoch}"))"
-      curl -s "${base_url}&before=${epoch}" > "${base_dir}/${user}.json.${epoch}"
-      sleep 1
-      (( req_count++ ))
+    temp_end_epoch=$(( start_epoch + 86400 ))
+    date_stamp="$(date --date="@${start_epoch}" +%Y%m%d)"
+    out_file="${base_dir}/${date_stamp}.json"
+
+    if [[ -f "${out_file}" ]]; then
+      printf -- '%s\n' "Exists: ${out_file}"
     else
-      printf -- '%s\n' "Exists: ${base_dir}/${user}.json.${epoch}"
+      printf -- '%s\n' "Downloading into ${out_file}. ($(date -d "@${start_epoch}" '+%a %d %b %Y'))"
+      curl -s "${base_url}&before=${temp_end_epoch}&after=${start_epoch}" > "${out_file}"
+      sleep 1
+      validate_file "${out_file}"
+      (( req_count++ ))
     fi
-    new_epoch=$(jq -r 'last(.[] | .[].created_utc)' "${base_dir}/${user}.json.${epoch}")
-    case "${new_epoch}" in
-      (null)
-        printf -- '%s\n' "End of processing likely reached..."
-        exit 0
-      ;;
-      ('')
-        printf -- '%s\n' "Error getting new epoch value" >&2
-        exit 1
-      ;;
-      (*)
-        # If we have a request limit warning in our data
-        # Remove the file and loop up to the sleep 60 before continuing
-        if grep -q "429 Too Many Requests" ./*; then
-          rm "$(grep -l "429 Too Many Requests" ./*)"
-          req_count="${req_limit}"
-          continue
-        fi
-      ;;
-    esac
+    start_epoch=$(( start_epoch + 86400 ))
   done
+
+  # The above loop does not download the latest, so we throw in this...
+  date_stamp="$(date --date="@${start_epoch}" +%Y%m%d)"
+  out_file="${base_dir}/${date_stamp}.json"
+
+  if [[ -f "${out_file}" ]]; then
+    printf -- '%s\n' "Exists: ${out_file}"
+  else
+    printf -- '%s\n' "Downloading into ${out_file}. ($(date -d "@${start_epoch}" '+%a %d %b %Y'))"
+    curl -s "${base_url}&before=${end_epoch}&after=${start_epoch}" > "${out_file}"
+  fi
+  validate_file "${out_file}"
 )
 exit 0
