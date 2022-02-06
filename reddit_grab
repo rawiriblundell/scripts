@@ -30,6 +30,14 @@ fi
 
 # Get our user string
 user="${1}"
+# Validate that the user exists
+case "$(curl -s "https://www.reddit.com/api/username_available.json?user=${user}")" in
+  (false) :;;
+  (*)
+    printf -- '%s\n' "'${user}' does not appear to exist as an account on Reddit" >&2
+    exit 1
+  ;;
+esac
 shift 1
 
 # Things are coming along nicely... Let's set our base variables...
