@@ -42,6 +42,7 @@ req_limit=50
 # Set the defaults for these two vars
 end_epoch=$(date --date="00:00:00" +%s)
 start_epoch=$(date --date="00:00:00 yesterday" +%s)
+cur_epoch="${EPOCHSECONDS:-$(date +%s)}"
 # Reddit enabled comments on 12 December 2005.
 reddit_epoch=1134298800
 
@@ -109,8 +110,12 @@ if (( start_epoch < reddit_epoch )); then
     "${start_epoch} is a timestamp from before that date.  Please try again." >&2
   exit 1
 fi
+if (( start_epoch > cur_epoch ))||(( end_epoch > cur_epoch )); then
+  printf -- '%s\n' "START time and/or END time cannot be in the future." >&2
+  exit 1
+fi
 if (( start_epoch > end_epoch )); then
-  printf -- '%s\n' "Start time cannot be newer than End time" >&2
+  printf -- '%s\n' "START time cannot be newer than END time." >&2
   exit 1
 fi
 
@@ -148,6 +153,8 @@ mkdir -p "${base_dir}" || exit 1
 
   # TO-DO: Fix this.  It's so close, but it's also late and I'm tired right now...
   until (( (end_epoch - 86400) == start_epoch )); do
+    (( start_epoch > end_epoch )) && break
+    (( start_epoch > cur_epoch )) && break
     if (( req_count >= req_limit )); then
       printf -- '%s\n' "Snoozing for 60 seconds to keep the remote server happy..."
       sleep 60
