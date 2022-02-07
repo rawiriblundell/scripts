@@ -156,19 +156,15 @@ validate_file() {
 
 mkdir -p "${base_dir}" || exit 1
 
+# The logic in this subshell isn't 100% - it downloads either yesterday's comments
+# or it downloads a whole bunch between two two timestamps
+# It doesn't necessarily download both... and my carefactor is honestly minimal...
 (
   cd "${base_dir}" || { printf -- '%s\n' "Could not enter ${base_dir}"; exit 1; }
 
-  # TO-DO: Fix this.  It's so close, but it's also late and I'm tired right now...
-  until (( (end_epoch - 86400) == start_epoch )); do
-    (( start_epoch > end_epoch )) && break
-    (( start_epoch > cur_epoch )) && break
-    if (( req_count >= req_limit )); then
-      printf -- '%s\n' "Snoozing for 60 seconds to keep the remote server happy..."
-      sleep 60
-      req_count=0
-    fi
-    temp_end_epoch=$(( start_epoch + 86400 ))
+  # If used with default start and end e.g. cron'd task, we cater for that
+  # This download's yesterday's comments
+  if (( (end_epoch - 86400) == start_epoch )); then
     date_stamp="$(date --date="@${start_epoch}" +%Y%m%d)"
     out_file="${base_dir}/${date_stamp}.json"
 
@@ -176,24 +172,33 @@ mkdir -p "${base_dir}" || exit 1
       printf -- '%s\n' "Exists: ${out_file}"
     else
       printf -- '%s\n' "Downloading into ${out_file}. ($(date -d "@${start_epoch}" '+%a %d %b %Y'))"
-      curl -s "${base_url}&before=${temp_end_epoch}&after=${start_epoch}" > "${out_file}"
-      sleep 1
-      validate_file "${out_file}"
-      (( req_count++ ))
+      curl -s "${base_url}&before=${end_epoch}&after=${start_epoch}" > "${out_file}"
     fi
-    start_epoch=$(( start_epoch + 86400 ))
-  done
-
-  # The above loop does not download the latest, so we throw in this...
-  date_stamp="$(date --date="@${start_epoch}" +%Y%m%d)"
-  out_file="${base_dir}/${date_stamp}.json"
-
-  if [[ -f "${out_file}" ]]; then
-    printf -- '%s\n' "Exists: ${out_file}"
+    validate_file "${out_file}"
   else
-    printf -- '%s\n' "Downloading into ${out_file}. ($(date -d "@${start_epoch}" '+%a %d %b %Y'))"
-    curl -s "${base_url}&before=${end_epoch}&after=${start_epoch}" > "${out_file}"
+    until (( (end_epoch - 86400) == start_epoch )); do
+      (( start_epoch > end_epoch )) && break
+      (( start_epoch > cur_epoch )) && break
+      if (( req_count >= req_limit )); then
+        printf -- '%s\n' "Snoozing for 60 seconds to keep the remote server happy..."
+        sleep 60
+        req_count=0
+      fi
+      temp_end_epoch=$(( start_epoch + 86400 ))
+      date_stamp="$(date --date="@${start_epoch}" +%Y%m%d)"
+      out_file="${base_dir}/${date_stamp}.json"
+
+      if [[ -f "${out_file}" ]]; then
+        printf -- '%s\n' "Exists: ${out_file}"
+      else
+        printf -- '%s\n' "Downloading into ${out_file}. ($(date -d "@${start_epoch}" '+%a %d %b %Y'))"
+        curl -s "${base_url}&before=${temp_end_epoch}&after=${start_epoch}" > "${out_file}"
+        sleep 1
+        validate_file "${out_file}"
+        (( req_count++ ))
+      fi
+      start_epoch=$(( start_epoch + 86400 ))
+    done
   fi
-  validate_file "${out_file}"
 )
 exit 0
