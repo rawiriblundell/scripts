@@ -156,8 +156,8 @@ validate_file() {
 
 mkdir -p "${base_dir}" || exit 1
 
-# The logic in this subshell isn't 100% - it downloads either yesterday's comments
-# or it downloads a whole bunch between two two timestamps
+# The logic in this subshell isn't 100% - it downloads either yesterday's
+# comments or it downloads a whole bunch between two timestamps
 # It doesn't necessarily download both... and my carefactor is honestly minimal...
 (
   cd "${base_dir}" || { printf -- '%s\n' "Could not enter ${base_dir}"; exit 1; }
