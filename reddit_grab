@@ -31,10 +31,15 @@ fi
 # Get our user string
 user="${1}"
 # Validate that the user exists
-case "$(curl -s "https://www.reddit.com/api/username_available.json?user=${user}")" in
+usertest="$(curl -s "https://www.reddit.com/api/username_available.json?user=${user}")"
+case "${usertest}" in
   (false) :;;
+  (*'Too many requests'*)
+    printf -- '%s\n' "Too many requests made to Reddit's API.  Wait a bit and try again." >&2
+    exit 1
+  ;;
   (*)
-    printf -- '%s\n' "'${user}' does not appear to exist as an account on Reddit" >&2
+    printf -- '%s\n' "'${user}' does not appear to exist on Reddit" >&2
     exit 1
   ;;
 esac
