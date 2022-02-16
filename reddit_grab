@@ -34,7 +34,7 @@ user="${1}"
 usertest="$(curl -s "https://www.reddit.com/api/username_available.json?user=${user}")"
 case "${usertest}" in
   (false) :;;
-  (*'Too many requests'*)
+  (*'Too Many Requests'*)
     printf -- '%s\n' "Too many requests made to Reddit's API.  Wait a bit and try again." >&2
     exit 1
   ;;
